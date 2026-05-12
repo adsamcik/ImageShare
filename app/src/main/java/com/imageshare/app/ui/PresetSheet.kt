@@ -77,9 +77,10 @@ fun MainScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val sources by viewModel.sources.collectAsState()
     val presets by viewModel.presets.collectAsState()
-    val selectedPresetId by viewModel.selectedPresetId.collectAsState()
     val processingState by viewModel.processingState.collectAsState()
-    val selectedPreset = presets.firstOrNull { it.id == selectedPresetId } ?: presets.firstOrNull()
+    val selectedPreset by viewModel.selectedPreset.collectAsState()
+    val effectivePreset by viewModel.effectivePreset.collectAsState()
+    val customOverride by viewModel.customOverride.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val picker = rememberPhotoPickerLauncher(
         onResult = viewModel::onPickerResult,
@@ -153,6 +154,9 @@ fun MainScreen(viewModel: MainViewModel) {
         sources = sources,
         presets = presets,
         selectedPreset = selectedPreset,
+        effectivePreset = effectivePreset,
+        customOverride = customOverride,
+        onCustomOverride = viewModel::onCustomOverride,
         processingState = processingState,
         onPresetSelected = viewModel::onPresetSelected,
         onPickFromGallery = {
@@ -173,6 +177,9 @@ fun PresetSheet(
     sources: List<SourceItem>,
     presets: List<Preset>,
     selectedPreset: Preset?,
+    effectivePreset: Preset? = selectedPreset,
+    customOverride: MainViewModel.CustomOverride? = null,
+    onCustomOverride: (MainViewModel.CustomOverride?) -> Unit = {},
     processingState: ProcessingState,
     onPresetSelected: (String) -> Unit,
     onPickFromGallery: () -> Unit,
@@ -187,6 +194,9 @@ fun PresetSheet(
     val hasSuccessfulResult = (processingState as? ProcessingState.Done)
         ?.results
         ?.any { it is PresetPipeline.Result.Success } ?: false
+    val upscaleBlocked = customOverride != null &&
+        !customOverride.allowUpscale &&
+        sources.any { source -> wouldUpscale(source, customOverride.resize) }
     val coroutineScope = rememberCoroutineScope()
 
     MaterialTheme {
@@ -207,12 +217,28 @@ fun PresetSheet(
                     } else {
                         SourcesSection(sources)
                         PresetsSection(presets, selectedPreset, onPresetSelected)
-                        selectedPreset?.let { PresetSummary(it) }
+                        effectivePreset?.let { PresetSummary(it) }
+                        selectedPreset?.let {
+                            Text(stringResource(R.string.resize_section_title), style = MaterialTheme.typography.titleMedium)
+                            CustomDimensionsCard(
+                                sources = sources,
+                                preset = it,
+                                customOverride = customOverride,
+                                onCustomOverride = onCustomOverride,
+                            )
+                        }
+                        if (upscaleBlocked) {
+                            Text(
+                                text = stringResource(R.string.upscale_blocked_warning),
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.testTag("upscale-warning"),
+                            )
+                        }
                         StatusLine(processingState)
                         ResultSummary(processingState)
                     }
                         ProcessButtons(
-                            processEnabled = sources.isNotEmpty() && !isProcessing,
+                            processEnabled = sources.isNotEmpty() && !isProcessing && !upscaleBlocked,
                             isProcessing = isProcessing,
                             saveEnabled = hasSuccessfulResult,
                             onProcessAndShare = onProcessAndShare,

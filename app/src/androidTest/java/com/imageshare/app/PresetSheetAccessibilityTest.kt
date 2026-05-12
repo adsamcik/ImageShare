@@ -1,13 +1,27 @@
 package com.imageshare.app
 
 import android.net.Uri
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
+import com.imageshare.app.MainViewModel.CustomOverride
 import com.imageshare.app.ui.PresetSheet
 import com.imageshare.core.io.SourceItem
 import com.imageshare.feature.preset.DefaultPresets
+import com.imageshare.feature.preset.ResizeMode
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 
@@ -46,5 +60,68 @@ class PresetSheetAccessibilityTest {
         composeRule.onNodeWithContentDescription("Process and share", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Save copy", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("Save copy").assertIsDisplayed()
+    }
+
+    @Test
+    fun customDimensionsEditEmitGuardAndReset() {
+        val source = SourceItem(
+            uri = Uri.parse("content://images/photo"),
+            mimeType = "image/jpeg",
+            displayName = "photo.jpg",
+            sizeBytes = 2_458L,
+            width = 1000,
+            height = 500,
+        )
+        var latestOverride: CustomOverride? = null
+
+        composeRule.setContent {
+            var override by remember { mutableStateOf<CustomOverride?>(null) }
+            PresetSheet(
+                sources = listOf(source),
+                presets = DefaultPresets.ALL,
+                selectedPreset = DefaultPresets.SmallFile,
+                customOverride = override,
+                onCustomOverride = {
+                    override = it
+                    latestOverride = it
+                },
+                processingState = ProcessingState.Idle,
+                onPresetSelected = {},
+                onPickFromGallery = {},
+                onProcessAndShare = {},
+                onCancelBatch = {},
+                onSaveCopy = {},
+                onAlphaConflictStrategy = {},
+            )
+        }
+
+        composeRule.onNodeWithTag("custom-dimensions-toggle").performClick()
+        composeRule.onNodeWithTag("resize-mode-exact").performClick()
+        composeRule.onNodeWithTag("aspect-lock-switch").performClick()
+        composeRule.onNodeWithTag("exact-width-field").performTextClearance()
+        composeRule.onNodeWithTag("exact-width-field").performTextInput("400")
+        composeRule.onNodeWithTag("exact-height-field").performTextClearance()
+        composeRule.onNodeWithTag("exact-height-field").performTextInput("300")
+        composeRule.mainClock.advanceTimeBy(300)
+        composeRule.waitForIdle()
+        assertEquals(ResizeMode.Exact(400, 300), latestOverride?.resize)
+
+        composeRule.onNodeWithTag("aspect-lock-switch").performClick()
+        composeRule.onNodeWithTag("exact-width-field").performTextClearance()
+        composeRule.onNodeWithTag("exact-width-field").performTextInput("500")
+        composeRule.onNodeWithTag("exact-height-field").assertTextContains("250")
+
+        composeRule.onNodeWithTag("resize-mode-long-edge").performClick()
+        composeRule.onNodeWithTag("long-edge-field").performTextClearance()
+        composeRule.onNodeWithTag("long-edge-field").performTextInput("1200")
+        composeRule.mainClock.advanceTimeBy(300)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("process-share-button").assertIsNotEnabled()
+        composeRule.onNodeWithText("Some sources would be enlarged. Toggle “Allow upscaling” or reduce the size.")
+            .assertIsDisplayed()
+
+        composeRule.onNodeWithTag("reset-dimensions-button").performClick()
+        composeRule.waitForIdle()
+        assertNull(latestOverride)
     }
 }

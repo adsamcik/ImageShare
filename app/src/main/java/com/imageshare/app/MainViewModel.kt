@@ -23,6 +23,7 @@ import com.imageshare.feature.preset.DefaultPresets
 import com.imageshare.feature.preset.OutputFormat
 import com.imageshare.feature.preset.Preset
 import com.imageshare.feature.preset.PresetRepository
+import com.imageshare.feature.preset.ResizeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -54,6 +55,7 @@ class MainViewModel(
     private val mutableSaveDocumentEvents = MutableSharedFlow<Intent>(extraBufferCapacity = 1)
     private val mutablePendingSingleSourceFile = MutableStateFlow<File?>(null)
     private val mutableSaveStatus = MutableStateFlow<SaveStatus>(SaveStatus.Idle)
+    private val _customOverride = MutableStateFlow<CustomOverride?>(null)
     private var currentBatchJob: Job? = null
 
     val presets: StateFlow<List<Preset>> = presetRepository.observePresets()
@@ -61,6 +63,22 @@ class MainViewModel(
 
     val selectedPresetId: StateFlow<String> = presetRepository.observeDefaultPresetId()
         .stateIn(viewModelScope, SharingStarted.Eagerly, DefaultPresets.DEFAULT_PRESET_ID)
+
+    val selectedPreset: StateFlow<Preset?> = combine(presets, selectedPresetId) { availablePresets, selectedId ->
+        availablePresets.firstOrNull { it.id == selectedId } ?: availablePresets.firstOrNull()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val customOverride: StateFlow<CustomOverride?> = _customOverride.asStateFlow()
+
+    val effectivePreset: StateFlow<Preset?> = combine(selectedPreset, customOverride) { base, override ->
+        if (base == null) {
+            null
+        } else if (override == null) {
+            base
+        } else {
+            base.copy(resize = override.resize)
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val sources: StateFlow<List<SourceItem>> = combine(sharedSources, pickedSources) { shared, picked ->
         shared + picked
@@ -75,6 +93,10 @@ class MainViewModel(
         viewModelScope.launch {
             presetRepository.setDefaultPresetId(presetId)
         }
+    }
+
+    fun onCustomOverride(override: CustomOverride?) {
+        _customOverride.value = override
     }
 
     fun onPickFromGallery() = Unit
@@ -93,7 +115,7 @@ class MainViewModel(
     fun onProcessAndShare() {
         val currentSources = sources.value
         if (currentSources.isEmpty() || mutableProcessingState.value is ProcessingState.Running) return
-        val preset = selectedPreset() ?: return
+        val preset = effectivePreset.value ?: return
         startBatch(currentSources, preset)
     }
 
@@ -159,8 +181,8 @@ class MainViewModel(
         }
 
         val preset = when (strategy) {
-            AlphaConflictStrategy.UseWhiteBackground -> selectedPreset()?.copy(alphaFallback = AlphaFallback.FillWhite)
-            AlphaConflictStrategy.SwitchToPng -> selectedPreset()?.copy(
+            AlphaConflictStrategy.UseWhiteBackground -> effectivePreset.value?.copy(alphaFallback = AlphaFallback.FillWhite)
+            AlphaConflictStrategy.SwitchToPng -> effectivePreset.value?.copy(
                 format = OutputFormat.PNG,
                 alphaFallback = AlphaFallback.SwitchToPng,
             )
@@ -239,8 +261,6 @@ class MainViewModel(
         }
     }
 
-    private fun selectedPreset(): Preset? = presets.value.firstOrNull { it.id == selectedPresetId.value }
-
     private fun currentSuccessfulResults(): List<PresetPipeline.Result.Success> {
         val running = mutableProcessingState.value as? ProcessingState.Running ?: return emptyList()
         return running.progress.items.mapNotNull { item ->
@@ -255,6 +275,11 @@ class MainViewModel(
             return MainViewModel(context.applicationContext) as T
         }
     }
+
+    data class CustomOverride(
+        val resize: ResizeMode,
+        val allowUpscale: Boolean,
+    )
 }
 
 sealed interface ProcessingState {

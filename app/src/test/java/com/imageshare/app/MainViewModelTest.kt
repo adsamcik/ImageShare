@@ -19,6 +19,7 @@ import com.imageshare.feature.preset.AlphaFallback
 import com.imageshare.feature.preset.DefaultPresets
 import com.imageshare.feature.preset.Preset
 import com.imageshare.feature.preset.PresetRepository
+import com.imageshare.feature.preset.ResizeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -109,9 +110,11 @@ class MainViewModelTest {
     fun alphaConflictWaitsForUserChoiceThenRerunsOnlyFailures() = runTest {
         val context = RuntimeEnvironment.getApplication()
         val events = mutableListOf<Intent>()
+        val seenPresets = mutableListOf<Preset>()
         var calls = 0
         val viewModel = viewModel(context) { before, preset, _ ->
             calls += 1
+            seenPresets += preset
             if (preset.alphaFallback == AlphaFallback.Error) {
                 PresetPipeline.Result.Failure(before, EncodeError.AlphaConflict(EncodeFormat.JPEG), PresetPipeline.Step.Encoding)
             } else {
@@ -119,6 +122,8 @@ class MainViewModelTest {
             }
         }
         viewModel.onPresetSelected(DefaultPresets.BestQuality.id)
+        val override = MainViewModel.CustomOverride(ResizeMode.Exact(200, 160), allowUpscale = false)
+        viewModel.onCustomOverride(override)
         advanceUntilIdle()
         stage(viewModel, source)
         advanceUntilIdle()
@@ -137,8 +142,36 @@ class MainViewModelTest {
         val resolvedDone = viewModel.processingState.value as ProcessingState.Done
         assertEquals(0, resolvedDone.alphaConflictCount)
         assertEquals(2, calls)
+        assertEquals(override.resize, seenPresets[0].resize)
+        assertEquals(override.resize, seenPresets[1].resize)
         assertEquals(1, events.size)
         eventJob.cancel()
+    }
+
+    @Test
+    fun customOverrideUpdatesEffectivePreset() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
+        advanceUntilIdle()
+
+        viewModel.onCustomOverride(MainViewModel.CustomOverride(ResizeMode.Percentage(50), allowUpscale = false))
+        advanceUntilIdle()
+
+        assertEquals(ResizeMode.Percentage(50), viewModel.effectivePreset.value?.resize)
+    }
+
+    @Test
+    fun clearingCustomOverrideRevertsToBasePreset() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
+        advanceUntilIdle()
+        viewModel.onCustomOverride(MainViewModel.CustomOverride(ResizeMode.Exact(320, 240), allowUpscale = false))
+        advanceUntilIdle()
+
+        viewModel.onCustomOverride(null)
+        advanceUntilIdle()
+
+        assertEquals(DefaultPresets.SmallFile.resize, viewModel.effectivePreset.value?.resize)
     }
 
     @Test
