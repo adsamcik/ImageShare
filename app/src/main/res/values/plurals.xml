@@ -1,0 +1,14 @@
+<resources>
+    <plurals name="alpha_conflict_count">
+        <item quantity="one">1 image has transparency.</item>
+        <item quantity="other">%d images have transparency.</item>
+    </plurals>
+    <plurals name="processing_progress">
+        <item quantity="one">Processing image %1$d of %2$d — %3$s</item>
+        <item quantity="other">Processing image %1$d of %2$d — %3$s</item>
+    </plurals>
+    <plurals name="alpha_skipped_count">
+        <item quantity="one">1 image skipped.</item>
+        <item quantity="other">%d images skipped.</item>
+    </plurals>
+</resources>

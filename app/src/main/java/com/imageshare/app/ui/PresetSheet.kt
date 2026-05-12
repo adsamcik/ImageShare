@@ -1,7 +1,9 @@
-@file:Suppress("TooManyFunctions", "LongParameterList", "MaxLineLength", "ReturnCount", "MagicNumber")
+@file:Suppress("TooManyFunctions", "LongParameterList", "MaxLineLength", "ReturnCount", "MagicNumber", "SpreadOperator")
 
 package com.imageshare.app.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +27,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,23 +40,29 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.imageshare.app.AlphaConflictStrategy
 import com.imageshare.app.MainViewModel
 import com.imageshare.app.ProcessingState
+import com.imageshare.app.R
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.io.SourceItem
+import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.core.io.rememberPhotoPickerLauncher
 import com.imageshare.feature.preset.MetadataPolicy
 import com.imageshare.feature.preset.OutputFormat
 import com.imageshare.feature.preset.Preset
 import com.imageshare.feature.preset.ResizeMode
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
@@ -63,6 +73,7 @@ fun MainScreen(viewModel: MainViewModel) {
     val selectedPresetId by viewModel.selectedPresetId.collectAsState()
     val processingState by viewModel.processingState.collectAsState()
     val selectedPreset = presets.firstOrNull { it.id == selectedPresetId } ?: presets.firstOrNull()
+    val snackbarHostState = remember { SnackbarHostState() }
     val picker = rememberPhotoPickerLauncher(
         onResult = viewModel::onPickerResult,
         maxItems = Int.MAX_VALUE,
@@ -70,7 +81,15 @@ fun MainScreen(viewModel: MainViewModel) {
 
     LaunchedEffect(viewModel) {
         viewModel.shareEvents.collect { shareIntent ->
-            context.startActivity(android.content.Intent.createChooser(shareIntent, null))
+            runCatching {
+                context.startActivity(Intent.createChooser(shareIntent, null))
+            }.onFailure { error ->
+                if (error is ActivityNotFoundException) {
+                    snackbarHostState.showSnackbar(context.getString(R.string.share_failed_no_target))
+                } else {
+                    throw error
+                }
+            }
         }
     }
 
@@ -86,6 +105,7 @@ fun MainScreen(viewModel: MainViewModel) {
         },
         onProcessAndShare = viewModel::onProcessAndShare,
         onAlphaConflictStrategy = viewModel::resolveAlphaConflicts,
+        snackbarHostState = snackbarHostState,
     )
 }
 
@@ -101,13 +121,16 @@ fun PresetSheet(
     onProcessAndShare: () -> Unit,
     onAlphaConflictStrategy: (AlphaConflictStrategy) -> Unit,
     modifier: Modifier = Modifier,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val isProcessing = processingState is ProcessingState.Running
+    val coroutineScope = rememberCoroutineScope()
 
     MaterialTheme {
         Surface(modifier = modifier.fillMaxSize()) {
             Scaffold(
-                topBar = { TopAppBar(title = { Text("← ImageShare") }) },
+                topBar = { TopAppBar(title = { Text(stringResource(R.string.top_bar_title)) }) },
+                snackbarHost = { SnackbarHost(snackbarHostState) },
             ) { paddingValues ->
                 Column(
                     modifier = Modifier
@@ -136,25 +159,42 @@ fun PresetSheet(
 
     val done = processingState as? ProcessingState.Done
     if (done != null && done.alphaConflictCount > 0) {
-        AlphaConflictDialog(done.alphaConflictCount, onAlphaConflictStrategy)
+        val skippedMessage = quantityStringResource(
+            R.plurals.alpha_skipped_count,
+            done.alphaConflictCount,
+            done.alphaConflictCount,
+        )
+        val onSkip = {
+            onAlphaConflictStrategy(AlphaConflictStrategy.Skip)
+            coroutineScope.launch { snackbarHostState.showSnackbar(skippedMessage) }
+            Unit
+        }
+        AlphaConflictDialog(
+            count = done.alphaConflictCount,
+            onUseWhite = { onAlphaConflictStrategy(AlphaConflictStrategy.UseWhiteBackground) },
+            onSwitchToPng = { onAlphaConflictStrategy(AlphaConflictStrategy.SwitchToPng) },
+            onSkip = onSkip,
+        )
     }
 }
 
 @Composable
 private fun EmptyState(onPickFromGallery: () -> Unit) {
+    val description = stringResource(R.string.empty_state_description)
+    val pickLabel = stringResource(R.string.pick_from_gallery)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .semantics { contentDescription = "Hello ImageShare. Share an image or pick from gallery." },
+            .semantics { contentDescription = description },
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Hello ImageShare")
-        Text("Share an image or pick from gallery.")
+        Text(stringResource(R.string.empty_state_title))
+        Text(stringResource(R.string.empty_state_hint))
         Button(
             onClick = onPickFromGallery,
-            modifier = Modifier.semantics { contentDescription = "Pick from gallery" },
+            modifier = Modifier.semantics { contentDescription = pickLabel },
         ) {
-            Text("Pick from gallery")
+            Text(pickLabel)
         }
     }
 }
@@ -162,7 +202,7 @@ private fun EmptyState(onPickFromGallery: () -> Unit) {
 @Composable
 private fun SourcesSection(sources: List<SourceItem>) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Sources", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.sources_title), style = MaterialTheme.typography.titleMedium)
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -179,15 +219,16 @@ private fun SourcesSection(sources: List<SourceItem>) {
 
 @Composable
 private fun SourceRow(source: SourceItem) {
-    val name = source.displayName ?: "Unnamed image"
+    val name = source.displayName ?: stringResource(R.string.unnamed_image)
     val description = "$name, ${dimensionsText(source, accessible = true)}, ${fileSizeText(source.sizeBytes, accessible = true)}"
+    val details = stringResource(R.string.source_detail_summary, dimensionsText(source), fileSizeText(source.sizeBytes))
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) { contentDescription = description },
     ) {
         Text(name)
-        Text("${dimensionsText(source)}  ${fileSizeText(source.sizeBytes)}")
+        Text(details)
     }
 }
 
@@ -198,7 +239,7 @@ private fun PresetsSection(
     onPresetSelected: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Preset", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.preset_title), style = MaterialTheme.typography.titleMedium)
         Row(
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
@@ -206,12 +247,13 @@ private fun PresetsSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             presets.forEach { preset ->
+                val chipDescription = stringResource(R.string.preset_content_description, preset.displayName)
                 FilterChip(
                     selected = preset.id == selectedPreset?.id,
                     onClick = { onPresetSelected(preset.id) },
                     label = { Text(preset.displayName) },
                     modifier = Modifier.semantics {
-                        contentDescription = "Preset ${preset.displayName}"
+                        contentDescription = chipDescription
                     },
                 )
             }
@@ -221,17 +263,22 @@ private fun PresetsSection(
 
 @Composable
 private fun PresetSummary(preset: Preset) {
+    val description = stringResource(
+        R.string.selected_preset_content_description,
+        preset.displayName,
+        presetSummaryText(preset, accessible = true),
+    )
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .padding(12.dp)
                 .semantics(mergeDescendants = true) {
-                    contentDescription = "Selected preset ${preset.displayName}, ${presetSummaryText(preset, accessible = true)}"
+                    contentDescription = description
                 },
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(presetSummaryText(preset))
-            Text("Metadata: ${preset.metadata.displayText()}")
+            Text(stringResource(R.string.metadata_summary, preset.metadata.displayText()))
         }
     }
 }
@@ -239,13 +286,23 @@ private fun PresetSummary(preset: Preset) {
 @Composable
 private fun StatusLine(processingState: ProcessingState) {
     val text = when (processingState) {
-        ProcessingState.Idle -> "Status: idle"
-        is ProcessingState.Running -> "Status: processing ${processingState.currentIndex}/${processingState.total} — ${processingState.step.displayText()}"
-        is ProcessingState.Done -> "Status: done — ${processingState.results.count { it is PresetPipeline.Result.Success }} succeeded, ${processingState.results.count { it is PresetPipeline.Result.Failure }} failed"
+        ProcessingState.Idle -> stringResource(R.string.status_idle)
+        is ProcessingState.Running -> quantityStringResource(
+            R.plurals.processing_progress,
+            processingState.total,
+            processingState.currentIndex,
+            processingState.total,
+            stringForStep(processingState.step),
+        )
+        is ProcessingState.Done -> stringResource(
+            R.string.status_done,
+            processingState.results.count { it is PresetPipeline.Result.Success },
+            processingState.results.count { it is PresetPipeline.Result.Failure },
+        )
     }
     Text(
         text = text,
-        modifier = Modifier.semantics { contentDescription = text.replace("/", " of ") },
+        modifier = Modifier.semantics { contentDescription = text },
     )
 }
 
@@ -266,14 +323,30 @@ private fun ResultSummary(processingState: ProcessingState) {
 
 @Composable
 private fun SuccessResult(result: PresetPipeline.Result.Success) {
-    val text = "${result.before.displayName ?: "Unnamed image"}: ${fileSizeText(result.before.sizeBytes)} to ${fileSizeText(result.stored.sizeBytes)}, ${result.finalWidth}×${result.finalHeight}, ${result.format.name}"
+    val name = result.before.displayName ?: stringResource(R.string.unnamed_image)
+    val text = stringResource(
+        R.string.success_result_summary,
+        name,
+        fileSizeText(result.before.sizeBytes),
+        fileSizeText(result.stored.sizeBytes),
+        result.finalWidth,
+        result.finalHeight,
+        formatLabel(result.format),
+    )
+    val description = stringResource(
+        R.string.success_result_description,
+        name,
+        fileSizeText(result.before.sizeBytes),
+        fileSizeText(result.stored.sizeBytes),
+        result.finalWidth,
+        result.finalHeight,
+        formatLabel(result.format, accessible = true),
+    )
     Column(
         modifier = Modifier
             .padding(12.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = text
-                    .replace("×", " by ")
-                    .replace("JPEG", "J P E G")
+                contentDescription = description
             },
     ) {
         Text(text)
@@ -282,13 +355,17 @@ private fun SuccessResult(result: PresetPipeline.Result.Success) {
 
 @Composable
 private fun FailureResult(result: PresetPipeline.Result.Failure) {
-    val message = "Error processing ${result.before.displayName ?: "image"}: ${result.cause.message ?: result.cause::class.java.simpleName}"
+    val message = stringResource(
+        R.string.failure_result_summary,
+        result.before.displayName ?: stringResource(R.string.image_fallback),
+        result.cause.message ?: result.cause::class.java.simpleName,
+    )
     Row(
         modifier = Modifier
             .padding(12.dp)
             .semantics(mergeDescendants = true) { contentDescription = message },
     ) {
-        Text("⚠", color = MaterialTheme.colorScheme.error)
+        Text(stringResource(R.string.warning_indicator), color = MaterialTheme.colorScheme.error)
         Spacer(Modifier.width(8.dp))
         Text(message, color = MaterialTheme.colorScheme.error)
     }
@@ -297,6 +374,7 @@ private fun FailureResult(result: PresetPipeline.Result.Failure) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProcessButtons(enabled: Boolean, onProcessAndShare: () -> Unit) {
+    val processDescription = stringResource(R.string.process_and_share_description)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(
             onClick = onProcessAndShare,
@@ -304,15 +382,16 @@ private fun ProcessButtons(enabled: Boolean, onProcessAndShare: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("process-share-button")
-                .semantics { contentDescription = "Process and share" },
+                .semantics { contentDescription = processDescription },
         ) {
-            Text("Process & share")
+            Text(stringResource(R.string.process_and_share))
         }
         TooltipBox(
             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-            tooltip = { PlainTooltip { Text("Coming in v0.2") } },
+            tooltip = { PlainTooltip { Text(stringResource(R.string.coming_in_v02)) } },
             state = rememberTooltipState(),
         ) {
+            val saveCopyDescription = stringResource(R.string.save_copy_v02_description)
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = {},
@@ -320,9 +399,9 @@ private fun ProcessButtons(enabled: Boolean, onProcessAndShare: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .alpha(0.5f)
-                        .semantics { contentDescription = "Save copy, coming in version 0.2" },
+                        .semantics { contentDescription = saveCopyDescription },
                 ) {
-                    Text("Save copy (v0.2)")
+                    Text(stringResource(R.string.save_copy_v02))
                 }
             }
         }
@@ -332,81 +411,136 @@ private fun ProcessButtons(enabled: Boolean, onProcessAndShare: () -> Unit) {
 @Composable
 private fun AlphaConflictDialog(
     count: Int,
-    onAlphaConflictStrategy: (AlphaConflictStrategy) -> Unit,
+    onUseWhite: () -> Unit,
+    onSwitchToPng: () -> Unit,
+    onSkip: () -> Unit,
 ) {
     AlertDialog(
-        onDismissRequest = { onAlphaConflictStrategy(AlphaConflictStrategy.Skip) },
-        title = { Text("Transparency detected") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("$count images have transparency. Choose:")
-                TextButton(onClick = { onAlphaConflictStrategy(AlphaConflictStrategy.SwitchToPng) }) {
-                    Text("Switch to PNG for those")
-                }
-            }
-        },
+        onDismissRequest = onSkip,
+        title = { Text(stringResource(R.string.alpha_conflict_title)) },
+        text = { Text(quantityStringResource(R.plurals.alpha_conflict_count, count, count)) },
         confirmButton = {
-            TextButton(onClick = { onAlphaConflictStrategy(AlphaConflictStrategy.UseWhiteBackground) }) {
-                Text("Use white background")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = { onAlphaConflictStrategy(AlphaConflictStrategy.Skip) }) {
-                Text("Skip")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onUseWhite) {
+                    Text(stringResource(R.string.alpha_use_white))
+                }
+                TextButton(onClick = onSwitchToPng) {
+                    Text(stringResource(R.string.alpha_switch_png))
+                }
+                TextButton(onClick = onSkip) {
+                    Text(stringResource(R.string.alpha_skip))
+                }
             }
         },
     )
 }
 
-private fun PresetPipeline.Step.displayText(): String = when (this) {
-    PresetPipeline.Step.Decoding -> "decoding"
-    PresetPipeline.Step.Resizing -> "resizing"
-    PresetPipeline.Step.Encoding -> "encoding"
-    PresetPipeline.Step.ApplyingMetadata -> "applying metadata"
-    PresetPipeline.Step.Storing -> "storing"
+@Composable
+private fun stringForStep(step: PresetPipeline.Step): String = when (step) {
+    PresetPipeline.Step.Decoding -> stringResource(R.string.step_decoding)
+    PresetPipeline.Step.Resizing -> stringResource(R.string.step_resizing)
+    PresetPipeline.Step.Encoding -> stringResource(R.string.step_encoding)
+    PresetPipeline.Step.ApplyingMetadata -> stringResource(R.string.step_applying_metadata)
+    PresetPipeline.Step.Storing -> stringResource(R.string.step_storing)
 }
 
+@Composable
 private fun presetSummaryText(preset: Preset, accessible: Boolean = false): String {
-    val format = when (preset.format) {
-        OutputFormat.JPEG -> if (accessible) "J P E G" else "JPEG"
-        OutputFormat.PNG -> if (accessible) "P N G" else "PNG"
-        OutputFormat.WEBP_LOSSY -> "WebP lossy"
-        OutputFormat.WEBP_LOSSLESS -> "WebP lossless"
-    }
-    return "Format: $format    ${resizeText(preset.resize, accessible)}"
+    return stringResource(
+        R.string.preset_summary,
+        stringResource(R.string.format_summary, formatLabel(preset.format, accessible)),
+        resizeText(preset.resize, accessible),
+    )
 }
 
+@Composable
 private fun resizeText(resize: ResizeMode, accessible: Boolean = false): String = when (resize) {
-    is ResizeMode.LongEdge -> "Long edge: ${resize.pixels} ${if (accessible) "pixels" else "px"}"
-    is ResizeMode.Exact -> "Exact: ${resize.width} ${if (accessible) "by" else "×"} ${resize.height} pixels"
-    is ResizeMode.Percentage -> "Resize: ${resize.pct} percent"
-    ResizeMode.Original -> "Original size"
+    is ResizeMode.LongEdge -> if (accessible) {
+        stringResource(R.string.long_edge_summary_accessible, resize.pixels)
+    } else {
+        stringResource(R.string.long_edge_summary, resize.pixels)
+    }
+    is ResizeMode.Exact -> if (accessible) {
+        stringResource(R.string.exact_resize_summary_accessible, resize.width, resize.height)
+    } else {
+        stringResource(R.string.exact_resize_summary, resize.width, resize.height)
+    }
+    is ResizeMode.Percentage -> stringResource(R.string.percentage_resize_summary, resize.pct)
+    ResizeMode.Original -> stringResource(R.string.original_size_summary)
 }
 
+@Composable
 private fun MetadataPolicy.displayText(): String = when (this) {
-    MetadataPolicy.StripAll -> "Strip all"
-    MetadataPolicy.PreserveSafe -> "Preserve safe"
-    MetadataPolicy.PreserveAll -> "Preserve all"
+    MetadataPolicy.StripAll -> stringResource(R.string.metadata_strip_all)
+    MetadataPolicy.PreserveSafe -> stringResource(R.string.metadata_preserve_safe)
+    MetadataPolicy.PreserveAll -> stringResource(R.string.metadata_preserve_all)
 }
 
+@Composable
 private fun dimensionsText(source: SourceItem, accessible: Boolean = false): String {
     val width = source.width
     val height = source.height
     return if (width != null && height != null) {
-        if (accessible) "$width by $height pixels" else "${width}×${height}"
+        if (accessible) {
+            stringResource(R.string.dimensions_accessible, width, height)
+        } else {
+            stringResource(R.string.dimensions_text, width, height)
+        }
     } else {
-        "unknown dimensions"
+        stringResource(R.string.unknown_dimensions)
     }
 }
 
+@Composable
 private fun fileSizeText(bytes: Long?, accessible: Boolean = false): String {
-    if (bytes == null) return "unknown size"
+    if (bytes == null) return stringResource(R.string.unknown_size)
     val kb = bytes / BYTES_PER_KIB.toDouble()
+    val locale = Locale.getDefault()
     if (kb < BYTES_PER_KIB) {
-        return if (accessible) String.format(Locale.US, "%.1f kilobytes", kb) else String.format(Locale.US, "%.1f KB", kb)
+        val amount = String.format(locale, "%.1f", kb)
+        return if (accessible) {
+            stringResource(R.string.kilobytes_accessible, amount)
+        } else {
+            stringResource(R.string.kilobytes_text, amount)
+        }
     }
     val mb = kb / BYTES_PER_KIB
-    return if (accessible) String.format(Locale.US, "%.1f megabytes", mb) else String.format(Locale.US, "%.1f MB", mb)
+    val amount = String.format(locale, "%.1f", mb)
+    return if (accessible) {
+        stringResource(R.string.megabytes_accessible, amount)
+    } else {
+        stringResource(R.string.megabytes_text, amount)
+    }
+}
+
+@Composable
+private fun formatLabel(format: OutputFormat, accessible: Boolean = false): String = when (format) {
+    OutputFormat.JPEG -> stringResource(if (accessible) R.string.output_format_jpeg_accessible else R.string.output_format_jpeg)
+    OutputFormat.PNG -> stringResource(if (accessible) R.string.output_format_png_accessible else R.string.output_format_png)
+    OutputFormat.WEBP_LOSSY -> {
+        stringResource(if (accessible) R.string.output_format_webp_lossy_accessible else R.string.output_format_webp_lossy)
+    }
+    OutputFormat.WEBP_LOSSLESS -> {
+        stringResource(if (accessible) R.string.output_format_webp_lossless_accessible else R.string.output_format_webp_lossless)
+    }
+}
+
+@Composable
+private fun formatLabel(format: EncodeFormat, accessible: Boolean = false): String = when (format) {
+    EncodeFormat.JPEG -> stringResource(if (accessible) R.string.output_format_jpeg_accessible else R.string.output_format_jpeg)
+    EncodeFormat.PNG -> stringResource(if (accessible) R.string.output_format_png_accessible else R.string.output_format_png)
+    EncodeFormat.WEBP_LOSSY -> {
+        stringResource(if (accessible) R.string.output_format_webp_lossy_accessible else R.string.output_format_webp_lossy)
+    }
+    EncodeFormat.WEBP_LOSSLESS -> {
+        stringResource(if (accessible) R.string.output_format_webp_lossless_accessible else R.string.output_format_webp_lossless)
+    }
+}
+
+@Composable
+private fun quantityStringResource(id: Int, quantity: Int, vararg formatArgs: Any): String {
+    val resources = LocalContext.current.resources
+    return resources.getQuantityString(id, quantity, *formatArgs)
 }
 
 private const val BYTES_PER_KIB = 1024
