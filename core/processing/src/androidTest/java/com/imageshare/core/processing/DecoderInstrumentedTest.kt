@@ -1,5 +1,6 @@
 package com.imageshare.core.processing
 
+import android.os.Build
 import androidx.exifinterface.media.ExifInterface
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,6 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -60,6 +62,21 @@ class DecoderInstrumentedTest {
     }
 
     @Test
+    fun screenshotPngReportsNoAlphaAndDecodesFlatColor() = runBlocking {
+        val uri = TestImages.screenshotPng(context)
+        val metadata = decoder.readMetadata(uri)
+        val image = decoder.decode(uri, targetLongEdgePx = 180)
+
+        assertEquals(320, metadata.width)
+        assertEquals(180, metadata.height)
+        assertEquals("image/png", metadata.mimeType)
+        assertFalse(metadata.hasAlpha)
+        assertFalse(image.hadAlpha)
+        assertFalse(image.bitmap.hasAlpha())
+        image.bitmap.recycle()
+    }
+
+    @Test
     fun webpLossyDecodesFirstFrame() = runBlocking {
         val uri = TestImages.webpLossy(context)
         val metadata = decoder.readMetadata(uri)
@@ -71,6 +88,18 @@ class DecoderInstrumentedTest {
         assertEquals(64, image.bitmap.height)
         assertNotNull(metadata.mimeType)
         image.bitmap.recycle()
+    }
+
+    @Test
+    fun avifDecodesOnApi31PlusOrFailsAsUnsupported() = runBlocking {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        val thrown = runCatching {
+            decoder.decode(TestImages.avif(context), targetLongEdgePx = 2).bitmap.recycle()
+        }.exceptionOrNull()
+
+        if (thrown != null) {
+            assertTrue(thrown is DecodeError.UnsupportedFormat)
+        }
     }
 
     @Test

@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.net.Uri
+import android.util.Base64
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import kotlin.random.Random
@@ -53,6 +54,18 @@ object TestImages {
         return Uri.fromFile(file)
     }
 
+    fun screenshotPng(context: Context): Uri {
+        val file = File(context.cacheDir, "screenshot_flat.png")
+        Bitmap.createBitmap(320, 180, Bitmap.Config.ARGB_8888).useBitmap { bitmap ->
+            bitmap.setHasAlpha(false)
+            Canvas(bitmap).drawColor(Color.rgb(28, 28, 30))
+            file.outputStream().use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            }
+        }
+        return Uri.fromFile(file)
+    }
+
     fun webpLossy(context: Context): Uri = writeBitmap(
         context = context,
         name = "webp_lossy.webp",
@@ -84,6 +97,12 @@ object TestImages {
     fun animatedGif(context: Context): Uri {
         val file = File(context.cacheDir, "animated.gif")
         file.writeBytes(AnimatedGifBytes)
+        return Uri.fromFile(file)
+    }
+
+    fun avif(context: Context): Uri {
+        val file = File(context.cacheDir, "tiny.avif")
+        file.writeBytes(Base64.decode(TinyAvifBase64, Base64.DEFAULT))
         return Uri.fromFile(file)
     }
 
@@ -127,4 +146,12 @@ object TestImages {
         0x04, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
         0x01, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b,
     )
+
+    private const val TinyAvifBase64 =
+        "AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAADrbWV0YQAAAAAAAAAhaGRscgAAAAAA" +
+            "AAAAcGljdAAAAAAAAAAAAAAAAAAAAAAOcGl0bQAAAAAAAQAAAB5pbG9jAAAAAEQAAAEAAQAAAAEA" +
+            "AAETAAAAHAAAAChpaW5mAAAAAAABAAAAGmluZmUCAAAAAAEAAGF2MDFDb2xvcgAAAABqaXBycAAA" +
+            "AEtpcGNvAAAAFGlzcGUAAAAAAAAAAgAAAAIAAAAQcGl4aQAAAAADCAgIAAAADGF2MUOBAAwAAAAA" +
+            "E2NvbHJuY2x4AAEADQAGgAAAABdpcG1hAAAAAAAAAAEAAQQBAoMEAAAAJG1kYXQSAAoFGAA2BCAy" +
+            "ERTABBBBBAAAeUzeoX5If/DI"
 }
