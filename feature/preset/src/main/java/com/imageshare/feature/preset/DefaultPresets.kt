@@ -11,7 +11,6 @@ object DefaultPresets {
         quality = 70,
         metadata = MetadataPolicy.StripAll,
         alphaFallback = AlphaFallback.FillWhite,
-        targetSizeBytes = EMAIL_TARGET_BYTES,
     )
 
     val BestQuality = Preset(
