@@ -2,9 +2,13 @@ package com.imageshare.app
 
 import android.content.ContentResolver
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
@@ -12,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,12 +31,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.imageshare.core.io.InputCoordinator
+import com.imageshare.core.io.OutputStore
+import com.imageshare.core.io.ShareLauncher
 import com.imageshare.core.io.SharedIntakeStager
 import com.imageshare.core.io.SourceItem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -43,8 +53,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val sources by viewModel.sources.collectAsState()
-            ImageShareApp(sources)
+            ImageShareApp(
+                sources = sources,
+                onSharePlaceholder = ::sharePlaceholderImage,
+            )
         }
+        sweepCachesOnStart()
         if (savedInstanceState == null) {
             handleShareIntent(intent)
         }
@@ -71,27 +85,78 @@ class MainActivity : ComponentActivity() {
 
     private fun sharedIntakeCacheRoot(): File =
         File(cacheDir, SHARED_INTAKE_CACHE_DIR).apply { mkdirs() }
+
+    private fun sweepCachesOnStart() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching {
+                SharedIntakeStager(contentResolver, sharedIntakeCacheRoot()).sweep()
+                OutputStore(cacheDir).sweep()
+            }.onFailure { Log.w(TAG, "Failed to sweep shared caches", it) }
+        }
+    }
+
+    private fun sharePlaceholderImage() {
+        lifecycleScope.launch {
+            val outputStore = OutputStore(cacheDir)
+            val timestamp = System.currentTimeMillis()
+            val storedItem = withContext(Dispatchers.IO) {
+                val jpegBytes = createPlaceholderJpeg()
+                outputStore.store(
+                    jobId = "share-$timestamp",
+                    filename = "imageshare-$timestamp.jpg",
+                    bytes = jpegBytes,
+                    mimeType = "image/jpeg",
+                )
+            }
+            val shareIntent = ShareLauncher().buildShareIntent(this@MainActivity, storedItem)
+            startActivity(Intent.createChooser(shareIntent, null))
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching { outputStore.sweep() }
+                    .onFailure { Log.w(TAG, "Failed to sweep output cache", it) }
+            }
+        }
+    }
+
+    private fun createPlaceholderJpeg(): ByteArray {
+        val bitmap = Bitmap.createBitmap(PLACEHOLDER_SIZE_PX, PLACEHOLDER_SIZE_PX, Bitmap.Config.ARGB_8888)
+        Canvas(bitmap).drawColor(Color.RED)
+        return ByteArrayOutputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, PLACEHOLDER_JPEG_QUALITY, output)
+            bitmap.recycle()
+            output.toByteArray()
+        }
+    }
 }
 
 @Composable
-fun ImageShareApp(sources: List<StagedSource> = emptyList()) {
+fun ImageShareApp(
+    sources: List<StagedSource> = emptyList(),
+    onSharePlaceholder: () -> Unit = {},
+) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            if (sources.isEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // TODO(p1-preset-ui): replace with real preset-driven encode + share
+                Button(
+                    onClick = onSharePlaceholder,
+                    modifier = Modifier.padding(top = 32.dp),
                 ) {
+                    Text(text = "Share placeholder.jpg")
+                }
+                if (sources.isEmpty()) {
                     Text(text = "Hello ImageShare", modifier = Modifier.padding(top = 32.dp))
                     Text(text = "Share an image to this app to begin.")
-                }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize().testTag("staged-sources")) {
-                    items(sources) { source ->
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(text = source.displayName ?: "Unnamed image")
-                            Text(text = "Size: ${source.sizeBytes ?: "unknown"} bytes")
-                            Text(text = source.cachedUri.toString())
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize().testTag("staged-sources")) {
+                        items(sources) { source ->
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(text = source.displayName ?: "Unnamed image")
+                                Text(text = "Size: ${source.sizeBytes ?: "unknown"} bytes")
+                                Text(text = source.cachedUri.toString())
+                            }
                         }
                     }
                 }
@@ -179,3 +244,6 @@ private fun Intent.getParcelableArrayListExtraCompat(name: String): ArrayList<Ur
 
 private const val SHARE_RANDOM_BOUND = 10_000
 private const val SHARED_INTAKE_CACHE_DIR = "shared-intake"
+private const val PLACEHOLDER_SIZE_PX = 100
+private const val PLACEHOLDER_JPEG_QUALITY = 80
+private const val TAG = "MainActivity"
