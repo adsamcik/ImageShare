@@ -212,6 +212,22 @@ class MainViewModelTest {
         eventJob.cancel()
     }
 
+    @Test
+    fun comparisonStateOpensAndClosesForResult() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
+        val result = success(context, DefaultPresets.SmallFile, source)
+
+        viewModel.onExpandResult(result)
+
+        assertEquals(source.uri, viewModel.shownComparison.value?.before)
+        assertEquals(Uri.fromFile(result.stored.file), viewModel.shownComparison.value?.after)
+
+        viewModel.onCloseComparison()
+
+        assertEquals(null, viewModel.shownComparison.value)
+    }
+
     private fun viewModel(
         context: android.content.Context,
         result: suspend (SourceItem, Preset, String) -> PresetPipeline.Result,

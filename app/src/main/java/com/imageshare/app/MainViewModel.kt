@@ -55,6 +55,7 @@ class MainViewModel(
     private val mutableSaveDocumentEvents = MutableSharedFlow<Intent>(extraBufferCapacity = 1)
     private val mutablePendingSingleSourceFile = MutableStateFlow<File?>(null)
     private val mutableSaveStatus = MutableStateFlow<SaveStatus>(SaveStatus.Idle)
+    private val _shownComparison = MutableStateFlow<ComparisonState?>(null)
     private val _customOverride = MutableStateFlow<CustomOverride?>(null)
     private var currentBatchJob: Job? = null
 
@@ -88,6 +89,7 @@ class MainViewModel(
     val shareEvents: SharedFlow<Intent> = mutableShareEvents.asSharedFlow()
     val saveDocumentEvents: SharedFlow<Intent> = mutableSaveDocumentEvents.asSharedFlow()
     val saveStatus: StateFlow<SaveStatus> = mutableSaveStatus.asStateFlow()
+    val shownComparison: StateFlow<ComparisonState?> = _shownComparison.asStateFlow()
 
     fun onPresetSelected(presetId: String) {
         viewModelScope.launch {
@@ -164,6 +166,14 @@ class MainViewModel(
 
     fun onSaveStatusShown() {
         mutableSaveStatus.value = SaveStatus.Idle
+    }
+
+    fun onExpandResult(result: PresetPipeline.Result.Success) {
+        _shownComparison.value = ComparisonState(result.before.uri, Uri.fromFile(result.stored.file))
+    }
+
+    fun onCloseComparison() {
+        _shownComparison.value = null
     }
 
     fun resolveAlphaConflicts(strategy: AlphaConflictStrategy) {
@@ -293,6 +303,8 @@ sealed interface ProcessingState {
 
     data class Cancelled(val partial: List<PresetPipeline.Result.Success>) : ProcessingState
 }
+
+data class ComparisonState(val before: Uri, val after: Uri)
 
 sealed interface SaveStatus {
     data object Idle : SaveStatus

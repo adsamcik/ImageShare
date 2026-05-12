@@ -1,4 +1,13 @@
-@file:Suppress("TooManyFunctions", "LongParameterList", "MaxLineLength", "ReturnCount", "MagicNumber", "SpreadOperator", "LongMethod")
+@file:Suppress(
+    "TooManyFunctions",
+    "LongParameterList",
+    "MaxLineLength",
+    "ReturnCount",
+    "MagicNumber",
+    "SpreadOperator",
+    "LongMethod",
+    "CyclomaticComplexMethod",
+)
 
 package com.imageshare.app.ui
 
@@ -55,7 +64,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.imageshare.app.AlphaConflictStrategy
+import com.imageshare.app.ComparisonState
 import com.imageshare.app.MainViewModel
 import com.imageshare.app.ProcessingState
 import com.imageshare.app.R
@@ -81,6 +92,7 @@ fun MainScreen(viewModel: MainViewModel) {
     val selectedPreset by viewModel.selectedPreset.collectAsState()
     val effectivePreset by viewModel.effectivePreset.collectAsState()
     val customOverride by viewModel.customOverride.collectAsState()
+    val shownComparison by viewModel.shownComparison.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val picker = rememberPhotoPickerLauncher(
         onResult = viewModel::onPickerResult,
@@ -158,6 +170,7 @@ fun MainScreen(viewModel: MainViewModel) {
         customOverride = customOverride,
         onCustomOverride = viewModel::onCustomOverride,
         processingState = processingState,
+        shownComparison = shownComparison,
         onPresetSelected = viewModel::onPresetSelected,
         onPickFromGallery = {
             viewModel.onPickFromGallery()
@@ -166,6 +179,8 @@ fun MainScreen(viewModel: MainViewModel) {
         onProcessAndShare = viewModel::onProcessAndShare,
         onCancelBatch = viewModel::onCancelBatch,
         onSaveCopy = viewModel::onSaveCopy,
+        onExpandResult = viewModel::onExpandResult,
+        onCloseComparison = viewModel::onCloseComparison,
         onAlphaConflictStrategy = viewModel::resolveAlphaConflicts,
         snackbarHostState = snackbarHostState,
     )
@@ -181,11 +196,14 @@ fun PresetSheet(
     customOverride: MainViewModel.CustomOverride? = null,
     onCustomOverride: (MainViewModel.CustomOverride?) -> Unit = {},
     processingState: ProcessingState,
+    shownComparison: ComparisonState? = null,
     onPresetSelected: (String) -> Unit,
     onPickFromGallery: () -> Unit,
     onProcessAndShare: () -> Unit,
     onCancelBatch: () -> Unit,
     onSaveCopy: () -> Unit,
+    onExpandResult: (PresetPipeline.Result.Success) -> Unit = {},
+    onCloseComparison: () -> Unit = {},
     onAlphaConflictStrategy: (AlphaConflictStrategy) -> Unit,
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -235,7 +253,11 @@ fun PresetSheet(
                             )
                         }
                         StatusLine(processingState)
-                        ResultSummary(processingState)
+                        ResultSummary(
+                            processingState = processingState,
+                            effectiveMetadata = effectivePreset?.metadata ?: selectedPreset?.metadata ?: MetadataPolicy.StripAll,
+                            onExpandResult = onExpandResult,
+                        )
                     }
                         ProcessButtons(
                             processEnabled = sources.isNotEmpty() && !isProcessing && !upscaleBlocked,
@@ -247,6 +269,20 @@ fun PresetSheet(
                         )
                 }
             }
+        }
+    }
+
+    if (shownComparison != null) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(1f),
+        ) {
+            ComparisonScreen(
+                before = shownComparison.before,
+                after = shownComparison.after,
+                onClose = onCloseComparison,
+            )
         }
     }
 
@@ -460,49 +496,25 @@ private fun itemStatusText(state: BatchOrchestrator.ItemState): String = when (s
 }
 
 @Composable
-private fun ResultSummary(processingState: ProcessingState) {
+private fun ResultSummary(
+    processingState: ProcessingState,
+    effectiveMetadata: MetadataPolicy,
+    onExpandResult: (PresetPipeline.Result.Success) -> Unit,
+) {
     val done = processingState as? ProcessingState.Done ?: return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         done.results.forEach { result ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                when (result) {
-                    is PresetPipeline.Result.Success -> SuccessResult(result)
-                    is PresetPipeline.Result.Failure -> FailureResult(result)
+            when (result) {
+                is PresetPipeline.Result.Success -> BeforeAfterCard(
+                    result = result,
+                    effectiveMetadata = effectiveMetadata,
+                    onExpandTapped = { onExpandResult(result) },
+                )
+                is PresetPipeline.Result.Failure -> Card(modifier = Modifier.fillMaxWidth()) {
+                    FailureResult(result)
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SuccessResult(result: PresetPipeline.Result.Success) {
-    val name = result.before.displayName ?: stringResource(R.string.unnamed_image)
-    val text = stringResource(
-        R.string.success_result_summary,
-        name,
-        fileSizeText(result.before.sizeBytes),
-        fileSizeText(result.stored.sizeBytes),
-        result.finalWidth,
-        result.finalHeight,
-        formatLabel(result.format),
-    )
-    val description = stringResource(
-        R.string.success_result_description,
-        name,
-        fileSizeText(result.before.sizeBytes),
-        fileSizeText(result.stored.sizeBytes),
-        result.finalWidth,
-        result.finalHeight,
-        formatLabel(result.format, accessible = true),
-    )
-    Column(
-        modifier = Modifier
-            .padding(12.dp)
-            .semantics(mergeDescendants = true) {
-                contentDescription = description
-            },
-    ) {
-        Text(text)
     }
 }
 
