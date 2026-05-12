@@ -1,9 +1,12 @@
-@file:Suppress("TooManyFunctions", "LongParameterList", "MaxLineLength", "ReturnCount", "MagicNumber", "SpreadOperator")
+@file:Suppress("TooManyFunctions", "LongParameterList", "MaxLineLength", "ReturnCount", "MagicNumber", "SpreadOperator", "LongMethod")
 
 package com.imageshare.app.ui
 
 import android.content.ActivityNotFoundException
+import android.app.Activity
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,6 +57,7 @@ import com.imageshare.app.AlphaConflictStrategy
 import com.imageshare.app.MainViewModel
 import com.imageshare.app.ProcessingState
 import com.imageshare.app.R
+import com.imageshare.app.SaveStatus
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.io.SourceItem
 import com.imageshare.core.processing.EncodeFormat
@@ -78,6 +82,13 @@ fun MainScreen(viewModel: MainViewModel) {
         onResult = viewModel::onPickerResult,
         maxItems = Int.MAX_VALUE,
     )
+    val saveDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        viewModel.onSaveDocumentResult(
+            if (result.resultCode == Activity.RESULT_OK) result.data?.data else null,
+        )
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.shareEvents.collect { shareIntent ->
@@ -89,6 +100,41 @@ fun MainScreen(viewModel: MainViewModel) {
                 } else {
                     throw error
                 }
+            }
+        }
+    }
+    LaunchedEffect(viewModel) {
+        viewModel.saveDocumentEvents.collect { intent ->
+            runCatching {
+                saveDocumentLauncher.launch(intent)
+            }.onFailure {
+                snackbarHostState.showSnackbar(context.getString(R.string.save_status_failed))
+                viewModel.onSaveDocumentResult(null)
+            }
+        }
+    }
+    LaunchedEffect(viewModel) {
+        viewModel.saveStatus.collect { status ->
+            val message = when (status) {
+                SaveStatus.Idle -> null
+                SaveStatus.Cancelled -> context.getString(R.string.save_status_cancelled)
+                is SaveStatus.SingleDone -> context.getString(
+                    R.string.save_status_single_done,
+                    fileSizeText(context, status.bytes),
+                )
+                is SaveStatus.BatchDone -> {
+                    val count = status.result.succeeded.size
+                    if (count > 0) {
+                        context.resources.getQuantityString(R.plurals.save_status_batch_done, count, count)
+                    } else {
+                        context.getString(R.string.save_status_failed)
+                    }
+                }
+                is SaveStatus.Failed -> context.getString(R.string.save_status_failed)
+            }
+            if (message != null) {
+                snackbarHostState.showSnackbar(message)
+                viewModel.onSaveStatusShown()
             }
         }
     }
@@ -104,6 +150,7 @@ fun MainScreen(viewModel: MainViewModel) {
             picker.launchMultiple()
         },
         onProcessAndShare = viewModel::onProcessAndShare,
+        onSaveCopy = viewModel::onSaveCopy,
         onAlphaConflictStrategy = viewModel::resolveAlphaConflicts,
         snackbarHostState = snackbarHostState,
     )
@@ -119,11 +166,16 @@ fun PresetSheet(
     onPresetSelected: (String) -> Unit,
     onPickFromGallery: () -> Unit,
     onProcessAndShare: () -> Unit,
+    onSaveCopy: () -> Unit,
     onAlphaConflictStrategy: (AlphaConflictStrategy) -> Unit,
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val isProcessing = processingState is ProcessingState.Running
+    val hasSuccessfulResult = (processingState as? ProcessingState.Done)
+        ?.results
+        ?.any { it is PresetPipeline.Result.Success }
+        ?: false
     val coroutineScope = rememberCoroutineScope()
 
     MaterialTheme {
@@ -149,8 +201,10 @@ fun PresetSheet(
                         ResultSummary(processingState)
                     }
                     ProcessButtons(
-                        enabled = sources.isNotEmpty() && !isProcessing,
+                        processEnabled = sources.isNotEmpty() && !isProcessing,
+                        saveEnabled = hasSuccessfulResult,
                         onProcessAndShare = onProcessAndShare,
+                        onSaveCopy = onSaveCopy,
                     )
                 }
             }
@@ -373,12 +427,17 @@ private fun FailureResult(result: PresetPipeline.Result.Failure) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProcessButtons(enabled: Boolean, onProcessAndShare: () -> Unit) {
+private fun ProcessButtons(
+    processEnabled: Boolean,
+    saveEnabled: Boolean,
+    onProcessAndShare: () -> Unit,
+    onSaveCopy: () -> Unit,
+) {
     val processDescription = stringResource(R.string.process_and_share_description)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(
             onClick = onProcessAndShare,
-            enabled = enabled,
+            enabled = processEnabled,
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("process-share-button")
@@ -386,22 +445,32 @@ private fun ProcessButtons(enabled: Boolean, onProcessAndShare: () -> Unit) {
         ) {
             Text(stringResource(R.string.process_and_share))
         }
+        val saveCopyDescription = stringResource(R.string.save_copy_description)
         TooltipBox(
             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-            tooltip = { PlainTooltip { Text(stringResource(R.string.coming_in_v02)) } },
+            tooltip = {
+                PlainTooltip {
+                    Text(
+                        if (saveEnabled) {
+                            saveCopyDescription
+                        } else {
+                            stringResource(R.string.save_copy_disabled_no_results)
+                        },
+                    )
+                }
+            },
             state = rememberTooltipState(),
         ) {
-            val saveCopyDescription = stringResource(R.string.save_copy_v02_description)
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
-                    onClick = {},
-                    enabled = false,
+                    onClick = onSaveCopy,
+                    enabled = saveEnabled,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .alpha(0.5f)
+                        .alpha(if (saveEnabled) 1f else 0.5f)
                         .semantics { contentDescription = saveCopyDescription },
                 ) {
-                    Text(stringResource(R.string.save_copy_v02))
+                    Text(stringResource(R.string.save_copy))
                 }
             }
         }
@@ -511,6 +580,16 @@ private fun fileSizeText(bytes: Long?, accessible: Boolean = false): String {
     } else {
         stringResource(R.string.megabytes_text, amount)
     }
+}
+
+private fun fileSizeText(context: android.content.Context, bytes: Long): String {
+    val kb = bytes / BYTES_PER_KIB.toDouble()
+    val locale = Locale.getDefault()
+    if (kb < BYTES_PER_KIB) {
+        return context.getString(R.string.kilobytes_text, String.format(locale, "%.1f", kb))
+    }
+    val mb = kb / BYTES_PER_KIB
+    return context.getString(R.string.megabytes_text, String.format(locale, "%.1f", mb))
 }
 
 @Composable

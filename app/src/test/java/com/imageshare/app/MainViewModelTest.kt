@@ -4,6 +4,8 @@ package com.imageshare.app
 
 import android.content.Intent
 import android.net.Uri
+import com.imageshare.app.saving.PersistentSaver
+import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.processing.PresetPipelineRunner
 import com.imageshare.core.io.OutputStore
@@ -114,6 +116,44 @@ class MainViewModelTest {
         eventJob.cancel()
     }
 
+    @Test
+    fun saveCopyForSingleResultEmitsCreateDocumentEvent() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val events = mutableListOf<Intent>()
+        val viewModel = viewModel(context) { _, preset, _ -> success(context, preset) }
+        stage(viewModel, source)
+        advanceUntilIdle()
+        viewModel.onProcessAndShare()
+        advanceUntilIdle()
+        val eventJob = launch { viewModel.saveDocumentEvents.collect { events.add(it) } }
+
+        viewModel.onSaveCopy()
+        advanceUntilIdle()
+
+        assertEquals(Intent.ACTION_CREATE_DOCUMENT, events.single().action)
+        assertEquals("image/jpeg", events.single().type)
+        eventJob.cancel()
+    }
+
+    @Test
+    fun saveDocumentResultUpdatesStatus() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val viewModel = viewModel(context) { _, preset, _ -> success(context, preset) }
+        stage(viewModel, source)
+        advanceUntilIdle()
+        viewModel.onProcessAndShare()
+        advanceUntilIdle()
+        val eventJob = launch { viewModel.saveDocumentEvents.collect {} }
+        viewModel.onSaveCopy()
+        advanceUntilIdle()
+
+        viewModel.onSaveDocumentResult(null)
+        advanceUntilIdle()
+
+        assertEquals(SaveStatus.Cancelled, viewModel.saveStatus.value)
+        eventJob.cancel()
+    }
+
     private fun viewModel(
         context: android.content.Context,
         result: suspend (SourceItem, Preset, String) -> PresetPipeline.Result,
@@ -122,6 +162,7 @@ class MainViewModelTest {
         presetRepository = FakePresetRepository(),
         outputStore = OutputStore(context.cacheDir),
         shareLauncher = ShareLauncher(ShareUriResolver { _, file -> Uri.parse("content://share/${file.name}") }),
+        saver = PersistentSaver(MediaStoreSaver(context.contentResolver), context.contentResolver),
         sharedIntakeRepositoryFactory = { _, _ -> FakeSharedIntakeRepository(listOf(source)) },
         pipelineFactory = { FakePipelineRunner(result) },
         processingDispatcher = mainDispatcherRule.dispatcher,

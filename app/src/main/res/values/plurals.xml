@@ -11,4 +11,8 @@
         <item quantity="one">1 image skipped.</item>
         <item quantity="other">%d images skipped.</item>
     </plurals>
+    <plurals name="save_status_batch_done">
+        <item quantity="one">Saved %d image to Pictures/ImageShare.</item>
+        <item quantity="other">Saved %d images to Pictures/ImageShare.</item>
+    </plurals>
 </resources>

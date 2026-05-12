@@ -1,6 +1,8 @@
 package com.imageshare.app
 
 import android.content.Context
+import com.imageshare.app.saving.PersistentSaver
+import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.core.io.OutputStore
 import com.imageshare.core.io.ShareLauncher
 import com.imageshare.core.io.SharedIntakeStager
@@ -26,6 +28,10 @@ object AppContainer {
     }
 
     val shareLauncher: ShareLauncher by lazy { ShareLauncher() }
+
+    val mediaStoreSaver: MediaStoreSaver by lazy { MediaStoreSaver(appContext.contentResolver) }
+
+    val persistentSaver: PersistentSaver by lazy { PersistentSaver(mediaStoreSaver, appContext.contentResolver) }
 }
 
 const val SHARED_INTAKE_DIR = "shared-intake"

@@ -34,7 +34,7 @@ class OutputStore(
         mimeType: String,
     ): StoredItem = withContext(Dispatchers.IO) {
         val jobDir = root().resolve(jobId).apply { mkdirs() }
-        val safeFilename = filename.sanitizeOutputFilename()
+        val safeFilename = sanitizeOutputFilename(filename)
         val outputFile = jobDir.resolve(safeFilename)
         FileOutputStream(outputFile).use { output ->
             bytes.inputStream().use { input ->
@@ -74,8 +74,8 @@ class OutputStore(
     }
 }
 
-private fun String.sanitizeOutputFilename(): String {
-    val sanitized = asSequence()
+internal fun sanitizeOutputFilename(filename: String): String {
+    val sanitized = filename.asSequence()
         .mapNotNull { char ->
             when {
                 char == '/' || char == '\\' -> '_'

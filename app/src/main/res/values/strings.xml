@@ -9,9 +9,9 @@
     <string name="pick_from_gallery">Pick from gallery</string>
     <string name="process_and_share">Process &amp; share</string>
     <string name="process_and_share_description">Process and share</string>
-    <string name="save_copy_v02">Save copy (v0.2)</string>
-    <string name="save_copy_v02_description">Save copy, coming in version 0.2</string>
-    <string name="coming_in_v02">Coming in v0.2</string>
+    <string name="save_copy">Save copy</string>
+    <string name="save_copy_description">Save copy</string>
+    <string name="save_copy_disabled_no_results">Process images first</string>
     <string name="status_idle">Status: idle</string>
     <string name="status_done">Status: done — %1$d succeeded, %2$d failed</string>
     <string name="unnamed_image">Unnamed image</string>
@@ -61,4 +61,7 @@
     <string name="metadata_preserve_safe">Preserve safe</string>
     <string name="metadata_preserve_all">Preserve all</string>
     <string name="share_failed_no_target">No app available to share to.</string>
+    <string name="save_status_cancelled">Save cancelled.</string>
+    <string name="save_status_single_done">Saved 1 image (%s).</string>
+    <string name="save_status_failed">Save failed.</string>
 </resources>

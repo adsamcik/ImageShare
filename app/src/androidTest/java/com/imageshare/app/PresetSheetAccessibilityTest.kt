@@ -35,6 +35,7 @@ class PresetSheetAccessibilityTest {
                 onPresetSelected = {},
                 onPickFromGallery = {},
                 onProcessAndShare = {},
+                onSaveCopy = {},
                 onAlphaConflictStrategy = {},
             )
         }
@@ -42,7 +43,7 @@ class PresetSheetAccessibilityTest {
         composeRule.onNodeWithContentDescription("photo.jpg, 64 by 48 pixels, 2.4 kilobytes").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Preset Small file", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Process and share", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Save copy, coming in version 0.2", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithText("Save copy (v0.2)").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Save copy", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Save copy").assertIsDisplayed()
     }
 }

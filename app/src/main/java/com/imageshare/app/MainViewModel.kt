@@ -1,4 +1,4 @@
-@file:Suppress("LongParameterList", "ReturnCount", "MaxLineLength")
+@file:Suppress("LongParameterList", "ReturnCount", "MaxLineLength", "TooManyFunctions")
 
 package com.imageshare.app
 
@@ -9,6 +9,8 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.imageshare.app.saving.PersistentSaver
+import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.processing.PresetPipelineRunner
 import com.imageshare.core.io.InputCoordinator
@@ -42,6 +44,7 @@ class MainViewModel(
     private val presetRepository: PresetRepository = AppContainer.presetRepository,
     private val outputStore: OutputStore = AppContainer.outputStore,
     private val shareLauncher: ShareLauncher = AppContainer.shareLauncher,
+    private val saver: PersistentSaver = AppContainer.persistentSaver,
     private val inputCoordinator: InputCoordinator = InputCoordinator(appContext.contentResolver),
     private val sharedIntakeRepositoryFactory: (ContentResolver, File) -> SharedIntakeRepository = ::AndroidSharedIntakeRepository,
     private val pipelineFactory: () -> PresetPipelineRunner = {
@@ -53,6 +56,9 @@ class MainViewModel(
     private val pickedSources = MutableStateFlow<List<SourceItem>>(emptyList())
     private val mutableProcessingState = MutableStateFlow<ProcessingState>(ProcessingState.Idle)
     private val mutableShareEvents = MutableSharedFlow<Intent>(extraBufferCapacity = 1)
+    private val mutableSaveDocumentEvents = MutableSharedFlow<Intent>(extraBufferCapacity = 1)
+    private val mutablePendingSingleSourceFile = MutableStateFlow<File?>(null)
+    private val mutableSaveStatus = MutableStateFlow<SaveStatus>(SaveStatus.Idle)
 
     val presets: StateFlow<List<Preset>> = presetRepository.observePresets()
         .stateIn(viewModelScope, SharingStarted.Eagerly, DefaultPresets.ALL)
@@ -66,6 +72,8 @@ class MainViewModel(
 
     val processingState: StateFlow<ProcessingState> = mutableProcessingState.asStateFlow()
     val shareEvents: SharedFlow<Intent> = mutableShareEvents.asSharedFlow()
+    val saveDocumentEvents: SharedFlow<Intent> = mutableSaveDocumentEvents.asSharedFlow()
+    val saveStatus: StateFlow<SaveStatus> = mutableSaveStatus.asStateFlow()
 
     fun onPresetSelected(presetId: String) {
         viewModelScope.launch {
@@ -94,6 +102,46 @@ class MainViewModel(
             val results = processSources(currentSources, preset, newJobId())
             finishProcessing(results)
         }
+    }
+
+    fun onSaveCopy() {
+        val results = (processingState.value as? ProcessingState.Done)
+            ?.results
+            ?.filterIsInstance<PresetPipeline.Result.Success>()
+            ?.map { it.stored }
+            ?: return
+        if (results.isEmpty()) return
+        viewModelScope.launch {
+            when (val outcome = saver.planSave(results)) {
+                is PersistentSaver.Outcome.SingleStarted -> {
+                    mutablePendingSingleSourceFile.value = outcome.pendingFile
+                    mutableSaveDocumentEvents.tryEmit(outcome.intent)
+                }
+                is PersistentSaver.Outcome.BatchCompleted -> {
+                    mutableSaveStatus.value = SaveStatus.BatchDone(outcome.result)
+                }
+            }
+        }
+    }
+
+    fun onSaveDocumentResult(destUri: Uri?) {
+        val pending = mutablePendingSingleSourceFile.value ?: return
+        mutablePendingSingleSourceFile.value = null
+        if (destUri == null) {
+            mutableSaveStatus.value = SaveStatus.Cancelled
+            return
+        }
+        viewModelScope.launch {
+            val written = runCatching { saver.copyToUri(destUri, pending) }
+            mutableSaveStatus.value = written.fold(
+                onSuccess = { bytes -> SaveStatus.SingleDone(destUri, bytes) },
+                onFailure = { error -> SaveStatus.Failed(error) },
+            )
+        }
+    }
+
+    fun onSaveStatusShown() {
+        mutableSaveStatus.value = SaveStatus.Idle
     }
 
     fun resolveAlphaConflicts(strategy: AlphaConflictStrategy) {
@@ -194,6 +242,14 @@ sealed interface ProcessingState {
         val results: List<PresetPipeline.Result>,
         val alphaConflictCount: Int = 0,
     ) : ProcessingState
+}
+
+sealed interface SaveStatus {
+    data object Idle : SaveStatus
+    data class BatchDone(val result: MediaStoreSaver.SaveAllResult) : SaveStatus
+    data class SingleDone(val uri: Uri, val bytes: Long) : SaveStatus
+    data object Cancelled : SaveStatus
+    data class Failed(val cause: Throwable) : SaveStatus
 }
 
 enum class AlphaConflictStrategy { UseWhiteBackground, SwitchToPng, Skip }
