@@ -9,12 +9,11 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.saving.PersistentSaver
 import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.app.processing.PresetPipeline
-import com.imageshare.app.processing.PresetPipelineRunner
 import com.imageshare.core.io.InputCoordinator
-import com.imageshare.core.io.OutputStore
 import com.imageshare.core.io.ShareLauncher
 import com.imageshare.core.io.SharedIntakeStager
 import com.imageshare.core.io.SourceItem
@@ -24,8 +23,8 @@ import com.imageshare.feature.preset.DefaultPresets
 import com.imageshare.feature.preset.OutputFormat
 import com.imageshare.feature.preset.Preset
 import com.imageshare.feature.preset.PresetRepository
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -42,15 +41,11 @@ import java.io.File
 class MainViewModel(
     private val appContext: Context,
     private val presetRepository: PresetRepository = AppContainer.presetRepository,
-    private val outputStore: OutputStore = AppContainer.outputStore,
     private val shareLauncher: ShareLauncher = AppContainer.shareLauncher,
     private val saver: PersistentSaver = AppContainer.persistentSaver,
     private val inputCoordinator: InputCoordinator = InputCoordinator(appContext.contentResolver),
     private val sharedIntakeRepositoryFactory: (ContentResolver, File) -> SharedIntakeRepository = ::AndroidSharedIntakeRepository,
-    private val pipelineFactory: () -> PresetPipelineRunner = {
-        PresetPipeline(appContext.contentResolver, outputStore)
-    },
-    private val processingDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val batchOrchestrator: BatchOrchestrator = AppContainer.batchOrchestrator,
 ) : ViewModel() {
     private val sharedSources = MutableStateFlow<List<SourceItem>>(emptyList())
     private val pickedSources = MutableStateFlow<List<SourceItem>>(emptyList())
@@ -59,6 +54,7 @@ class MainViewModel(
     private val mutableSaveDocumentEvents = MutableSharedFlow<Intent>(extraBufferCapacity = 1)
     private val mutablePendingSingleSourceFile = MutableStateFlow<File?>(null)
     private val mutableSaveStatus = MutableStateFlow<SaveStatus>(SaveStatus.Idle)
+    private var currentBatchJob: Job? = null
 
     val presets: StateFlow<List<Preset>> = presetRepository.observePresets()
         .stateIn(viewModelScope, SharingStarted.Eagerly, DefaultPresets.ALL)
@@ -98,10 +94,14 @@ class MainViewModel(
         val currentSources = sources.value
         if (currentSources.isEmpty() || mutableProcessingState.value is ProcessingState.Running) return
         val preset = selectedPreset() ?: return
-        viewModelScope.launch {
-            val results = processSources(currentSources, preset, newJobId())
-            finishProcessing(results)
-        }
+        startBatch(currentSources, preset)
+    }
+
+    fun onCancelBatch() {
+        val partial = currentSuccessfulResults()
+        currentBatchJob?.cancel()
+        currentBatchJob = null
+        mutableProcessingState.value = ProcessingState.Cancelled(partial)
     }
 
     fun onSaveCopy() {
@@ -167,10 +167,7 @@ class MainViewModel(
             AlphaConflictStrategy.Skip -> null
         } ?: return
 
-        viewModelScope.launch {
-            val rerunResults = processSources(conflicts.map { it.before }, preset, newJobId())
-            finishProcessing(retained + rerunResults)
-        }
+        startBatch(conflicts.map { it.before }, preset, retained)
     }
 
     suspend fun stageSharedUris(
@@ -187,17 +184,40 @@ class MainViewModel(
         mutableProcessingState.value = ProcessingState.Idle
     }
 
+    private fun startBatch(
+        pendingSources: List<SourceItem>,
+        preset: Preset,
+        retainedResults: List<PresetPipeline.Result> = emptyList(),
+    ) {
+        currentBatchJob?.cancel()
+        currentBatchJob = viewModelScope.launch {
+            try {
+                val results = processSources(pendingSources, preset, newJobId())
+                finishProcessing(retainedResults + results)
+            } finally {
+                if (currentBatchJob === coroutineContext[Job]) {
+                    currentBatchJob = null
+                }
+            }
+        }
+    }
+
     private suspend fun processSources(
         pendingSources: List<SourceItem>,
         preset: Preset,
         jobId: String,
-    ): List<PresetPipeline.Result> = withContext(processingDispatcher) {
-        val runner = pipelineFactory()
-        pendingSources.mapIndexed { index, source ->
-            runner.run(source, preset, jobId) { step ->
-                mutableProcessingState.value = ProcessingState.Running(index + 1, pendingSources.size, step)
-            }
+    ): List<PresetPipeline.Result> {
+        var latest = BatchOrchestrator.BatchProgress(
+            jobId = jobId,
+            items = pendingSources.map {
+                BatchOrchestrator.BatchProgress.Item(it, BatchOrchestrator.ItemState.Pending)
+            },
+        )
+        batchOrchestrator.run(jobId, pendingSources, preset).collect { progress ->
+            latest = progress
+            mutableProcessingState.value = ProcessingState.Running(progress)
         }
+        return latest.items.mapNotNull { (it.state as? BatchOrchestrator.ItemState.Done)?.result }
     }
 
     private fun finishProcessing(results: List<PresetPipeline.Result>) {
@@ -221,6 +241,13 @@ class MainViewModel(
 
     private fun selectedPreset(): Preset? = presets.value.firstOrNull { it.id == selectedPresetId.value }
 
+    private fun currentSuccessfulResults(): List<PresetPipeline.Result.Success> {
+        val running = mutableProcessingState.value as? ProcessingState.Running ?: return emptyList()
+        return running.progress.items.mapNotNull { item ->
+            (item.state as? BatchOrchestrator.ItemState.Done)?.result as? PresetPipeline.Result.Success
+        }
+    }
+
     class Factory(private val context: Context) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -232,16 +259,14 @@ class MainViewModel(
 
 sealed interface ProcessingState {
     data object Idle : ProcessingState
-    data class Running(
-        val currentIndex: Int,
-        val total: Int,
-        val step: PresetPipeline.Step,
-    ) : ProcessingState
+    data class Running(val progress: BatchOrchestrator.BatchProgress) : ProcessingState
 
     data class Done(
         val results: List<PresetPipeline.Result>,
         val alphaConflictCount: Int = 0,
     ) : ProcessingState
+
+    data class Cancelled(val partial: List<PresetPipeline.Result.Success>) : ProcessingState
 }
 
 sealed interface SaveStatus {

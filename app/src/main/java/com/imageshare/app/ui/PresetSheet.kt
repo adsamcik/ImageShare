@@ -26,6 +26,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PlainTooltip
@@ -47,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -58,6 +60,7 @@ import com.imageshare.app.MainViewModel
 import com.imageshare.app.ProcessingState
 import com.imageshare.app.R
 import com.imageshare.app.SaveStatus
+import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.io.SourceItem
 import com.imageshare.core.processing.EncodeFormat
@@ -138,6 +141,13 @@ fun MainScreen(viewModel: MainViewModel) {
             }
         }
     }
+    LaunchedEffect(processingState) {
+        val cancelled = processingState as? ProcessingState.Cancelled ?: return@LaunchedEffect
+        val count = cancelled.partial.size
+        snackbarHostState.showSnackbar(
+            context.resources.getQuantityString(R.plurals.batch_cancelled_partial, count, count),
+        )
+    }
 
     PresetSheet(
         sources = sources,
@@ -150,6 +160,7 @@ fun MainScreen(viewModel: MainViewModel) {
             picker.launchMultiple()
         },
         onProcessAndShare = viewModel::onProcessAndShare,
+        onCancelBatch = viewModel::onCancelBatch,
         onSaveCopy = viewModel::onSaveCopy,
         onAlphaConflictStrategy = viewModel::resolveAlphaConflicts,
         snackbarHostState = snackbarHostState,
@@ -166,6 +177,7 @@ fun PresetSheet(
     onPresetSelected: (String) -> Unit,
     onPickFromGallery: () -> Unit,
     onProcessAndShare: () -> Unit,
+    onCancelBatch: () -> Unit,
     onSaveCopy: () -> Unit,
     onAlphaConflictStrategy: (AlphaConflictStrategy) -> Unit,
     modifier: Modifier = Modifier,
@@ -174,8 +186,7 @@ fun PresetSheet(
     val isProcessing = processingState is ProcessingState.Running
     val hasSuccessfulResult = (processingState as? ProcessingState.Done)
         ?.results
-        ?.any { it is PresetPipeline.Result.Success }
-        ?: false
+        ?.any { it is PresetPipeline.Result.Success } ?: false
     val coroutineScope = rememberCoroutineScope()
 
     MaterialTheme {
@@ -200,12 +211,14 @@ fun PresetSheet(
                         StatusLine(processingState)
                         ResultSummary(processingState)
                     }
-                    ProcessButtons(
-                        processEnabled = sources.isNotEmpty() && !isProcessing,
-                        saveEnabled = hasSuccessfulResult,
-                        onProcessAndShare = onProcessAndShare,
-                        onSaveCopy = onSaveCopy,
-                    )
+                        ProcessButtons(
+                            processEnabled = sources.isNotEmpty() && !isProcessing,
+                            isProcessing = isProcessing,
+                            saveEnabled = hasSuccessfulResult,
+                            onProcessAndShare = onProcessAndShare,
+                            onCancelBatch = onCancelBatch,
+                            onSaveCopy = onSaveCopy,
+                        )
                 }
             }
         }
@@ -339,25 +352,85 @@ private fun PresetSummary(preset: Preset) {
 
 @Composable
 private fun StatusLine(processingState: ProcessingState) {
-    val text = when (processingState) {
-        ProcessingState.Idle -> stringResource(R.string.status_idle)
-        is ProcessingState.Running -> quantityStringResource(
-            R.plurals.processing_progress,
-            processingState.total,
-            processingState.currentIndex,
-            processingState.total,
-            stringForStep(processingState.step),
+    when (processingState) {
+        ProcessingState.Idle -> {
+            val text = stringResource(R.string.status_idle)
+            Text(text = text, modifier = Modifier.semantics { contentDescription = text })
+        }
+        is ProcessingState.Running -> BatchProgressStatus(processingState.progress)
+        is ProcessingState.Done -> {
+            val text = stringResource(
+                R.string.status_done,
+                processingState.results.count { it is PresetPipeline.Result.Success },
+                processingState.results.count { it is PresetPipeline.Result.Failure },
+            )
+            Text(text = text, modifier = Modifier.semantics { contentDescription = text })
+        }
+        is ProcessingState.Cancelled -> {
+            val text = quantityStringResource(
+                R.plurals.batch_cancelled_partial,
+                processingState.partial.size,
+                processingState.partial.size,
+            )
+            Text(text = text, modifier = Modifier.semantics { contentDescription = text })
+        }
+    }
+}
+
+@Composable
+private fun BatchProgressStatus(progress: BatchOrchestrator.BatchProgress) {
+    val fraction = if (progress.total == 0) 1f else progress.completed.toFloat() / progress.total.toFloat()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LinearProgressIndicator(
+            progress = { fraction },
+            modifier = Modifier.fillMaxWidth(),
         )
-        is ProcessingState.Done -> stringResource(
-            R.string.status_done,
-            processingState.results.count { it is PresetPipeline.Result.Success },
-            processingState.results.count { it is PresetPipeline.Result.Failure },
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 200.dp)
+                .testTag("batch-progress-list"),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            items(progress.items) { item ->
+                BatchProgressRow(item)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BatchProgressRow(item: BatchOrchestrator.BatchProgress.Item) {
+    val name = item.source.displayName ?: stringResource(R.string.unnamed_image)
+    val status = itemStatusText(item.state)
+    val color = when (item.state) {
+        BatchOrchestrator.ItemState.Pending,
+        BatchOrchestrator.ItemState.Cancelled,
+        -> MaterialTheme.colorScheme.outline
+        is BatchOrchestrator.ItemState.Running -> MaterialTheme.colorScheme.primary
+        is BatchOrchestrator.ItemState.Done -> MaterialTheme.colorScheme.secondary
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) { contentDescription = "$name, $status" },
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(name, modifier = Modifier.weight(1f))
+        Text(
+            text = status,
+            color = color,
+            fontStyle = if (item.state == BatchOrchestrator.ItemState.Cancelled) FontStyle.Italic else FontStyle.Normal,
         )
     }
-    Text(
-        text = text,
-        modifier = Modifier.semantics { contentDescription = text },
-    )
+}
+
+@Composable
+private fun itemStatusText(state: BatchOrchestrator.ItemState): String = when (state) {
+    BatchOrchestrator.ItemState.Pending -> stringResource(R.string.batch_item_queued)
+    is BatchOrchestrator.ItemState.Running -> stringResource(R.string.batch_item_running, stringForStep(state.step))
+    is BatchOrchestrator.ItemState.Done -> stringResource(R.string.batch_item_done)
+    BatchOrchestrator.ItemState.Cancelled -> stringResource(R.string.batch_item_cancelled)
 }
 
 @Composable
@@ -429,21 +502,37 @@ private fun FailureResult(result: PresetPipeline.Result.Failure) {
 @Composable
 private fun ProcessButtons(
     processEnabled: Boolean,
+    isProcessing: Boolean,
     saveEnabled: Boolean,
     onProcessAndShare: () -> Unit,
+    onCancelBatch: () -> Unit,
     onSaveCopy: () -> Unit,
 ) {
     val processDescription = stringResource(R.string.process_and_share_description)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(
-            onClick = onProcessAndShare,
-            enabled = processEnabled,
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("process-share-button")
-                .semantics { contentDescription = processDescription },
-        ) {
-            Text(stringResource(R.string.process_and_share))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = onProcessAndShare,
+                enabled = processEnabled,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("process-share-button")
+                    .semantics { contentDescription = processDescription },
+            ) {
+                Text(stringResource(R.string.process_and_share))
+            }
+            if (isProcessing) {
+                val cancelDescription = stringResource(R.string.cancel_batch_description)
+                OutlinedButton(
+                    onClick = onCancelBatch,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("cancel-batch-button")
+                        .semantics { contentDescription = cancelDescription },
+                ) {
+                    Text(stringResource(R.string.cancel_batch))
+                }
+            }
         }
         val saveCopyDescription = stringResource(R.string.save_copy_description)
         TooltipBox(

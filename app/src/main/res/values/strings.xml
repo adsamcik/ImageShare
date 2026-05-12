@@ -9,6 +9,8 @@
     <string name="pick_from_gallery">Pick from gallery</string>
     <string name="process_and_share">Process &amp; share</string>
     <string name="process_and_share_description">Process and share</string>
+    <string name="cancel_batch">Cancel</string>
+    <string name="cancel_batch_description">Cancel batch</string>
     <string name="save_copy">Save copy</string>
     <string name="save_copy_description">Save copy</string>
     <string name="save_copy_disabled_no_results">Process images first</string>
@@ -42,6 +44,10 @@
     <string name="step_encoding">Encoding</string>
     <string name="step_applying_metadata">Applying metadata</string>
     <string name="step_storing">Storing</string>
+    <string name="batch_item_queued">Queued</string>
+    <string name="batch_item_running">%1$s…</string>
+    <string name="batch_item_done">Done</string>
+    <string name="batch_item_cancelled">Cancelled</string>
     <string name="preset_content_description">Preset %1$s</string>
     <string name="selected_preset_content_description">Selected preset %1$s, %2$s</string>
     <string name="dimensions_accessible">%1$d by %2$d pixels</string>

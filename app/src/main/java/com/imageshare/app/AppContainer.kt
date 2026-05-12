@@ -1,6 +1,8 @@
 package com.imageshare.app
 
 import android.content.Context
+import com.imageshare.app.processing.BatchOrchestrator
+import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.saving.PersistentSaver
 import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.core.io.OutputStore
@@ -22,6 +24,10 @@ object AppContainer {
     }
 
     val outputStore: OutputStore by lazy { OutputStore(appContext.cacheDir) }
+
+    val presetPipeline: PresetPipeline by lazy { PresetPipeline(appContext.contentResolver, outputStore) }
+
+    val batchOrchestrator: BatchOrchestrator by lazy { BatchOrchestrator(presetPipeline) }
 
     val sharedIntakeStager: SharedIntakeStager by lazy {
         SharedIntakeStager(appContext.contentResolver, appContext.cacheDir.resolve(SHARED_INTAKE_DIR))

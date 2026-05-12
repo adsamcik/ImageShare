@@ -35,6 +35,7 @@ class PresetSheetAccessibilityTest {
                 onPresetSelected = {},
                 onPickFromGallery = {},
                 onProcessAndShare = {},
+                onCancelBatch = {},
                 onSaveCopy = {},
                 onAlphaConflictStrategy = {},
             )

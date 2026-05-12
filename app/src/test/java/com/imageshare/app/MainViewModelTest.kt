@@ -4,6 +4,7 @@ package com.imageshare.app
 
 import android.content.Intent
 import android.net.Uri
+import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.saving.PersistentSaver
 import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.app.processing.PresetPipeline
@@ -23,7 +24,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -63,21 +66,43 @@ class MainViewModelTest {
         val context = RuntimeEnvironment.getApplication()
         val states = mutableListOf<ProcessingState>()
         val events = mutableListOf<Intent>()
-        val viewModel = viewModel(context) { _, preset, _ -> success(context, preset) }
-        stage(viewModel, source)
+        val second = source.copy(uri = Uri.parse("content://images/two"), displayName = "two.jpg")
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
+        stage(viewModel, source, second)
         advanceUntilIdle()
 
         val stateJob = launch { viewModel.processingState.collect { states.add(it) } }
         val eventJob = launch { viewModel.shareEvents.collect { events.add(it) } }
+        advanceUntilIdle()
         viewModel.onProcessAndShare()
         advanceUntilIdle()
 
-        assertTrue(states.any { it is ProcessingState.Running })
+        assertTrue(states.any { it is ProcessingState.Done })
         val done = viewModel.processingState.value as ProcessingState.Done
-        assertEquals(1, done.results.filterIsInstance<PresetPipeline.Result.Success>().size)
-        assertEquals(Intent.ACTION_SEND, events.single().action)
+        assertEquals(2, done.results.filterIsInstance<PresetPipeline.Result.Success>().size)
+        assertEquals(Intent.ACTION_SEND_MULTIPLE, events.single().action)
         stateJob.cancel()
         eventJob.cancel()
+    }
+
+    @Test
+    fun cancelBatchCancelsInFlightJobAndKeepsPartialSuccesses() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val second = source.copy(uri = Uri.parse("content://images/two"), displayName = "two.jpg")
+        val viewModel = viewModel(context) { before, preset, _ ->
+            if (before == second) awaitCancellation()
+            success(context, preset, before)
+        }
+        stage(viewModel, source, second)
+        advanceUntilIdle()
+
+        viewModel.onProcessAndShare()
+        advanceUntilIdle()
+        viewModel.onCancelBatch()
+        advanceUntilIdle()
+
+        val cancelled = viewModel.processingState.value as ProcessingState.Cancelled
+        assertEquals(1, cancelled.partial.size)
     }
 
     @Test
@@ -120,7 +145,7 @@ class MainViewModelTest {
     fun saveCopyForSingleResultEmitsCreateDocumentEvent() = runTest {
         val context = RuntimeEnvironment.getApplication()
         val events = mutableListOf<Intent>()
-        val viewModel = viewModel(context) { _, preset, _ -> success(context, preset) }
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
         stage(viewModel, source)
         advanceUntilIdle()
         viewModel.onProcessAndShare()
@@ -138,7 +163,7 @@ class MainViewModelTest {
     @Test
     fun saveDocumentResultUpdatesStatus() = runTest {
         val context = RuntimeEnvironment.getApplication()
-        val viewModel = viewModel(context) { _, preset, _ -> success(context, preset) }
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
         stage(viewModel, source)
         advanceUntilIdle()
         viewModel.onProcessAndShare()
@@ -160,22 +185,24 @@ class MainViewModelTest {
     ): MainViewModel = MainViewModel(
         appContext = context,
         presetRepository = FakePresetRepository(),
-        outputStore = OutputStore(context.cacheDir),
         shareLauncher = ShareLauncher(ShareUriResolver { _, file -> Uri.parse("content://share/${file.name}") }),
         saver = PersistentSaver(MediaStoreSaver(context.contentResolver), context.contentResolver),
         sharedIntakeRepositoryFactory = { _, _ -> FakeSharedIntakeRepository(listOf(source)) },
-        pipelineFactory = { FakePipelineRunner(result) },
-        processingDispatcher = mainDispatcherRule.dispatcher,
+        batchOrchestrator = BatchOrchestrator(FakePipelineRunner(result), mainDispatcherRule.dispatcher),
     )
 
-    private suspend fun stage(viewModel: MainViewModel, sourceItem: SourceItem) {
-        viewModel.stageSharedUris("job", listOf(sourceItem.uri), FakeSharedIntakeRepository(listOf(sourceItem)))
+    private suspend fun stage(viewModel: MainViewModel, vararg sourceItems: SourceItem) {
+        viewModel.stageSharedUris("job", sourceItems.map { it.uri }, FakeSharedIntakeRepository(sourceItems.toList()))
     }
 
-    private fun success(context: android.content.Context, preset: Preset): PresetPipeline.Result.Success {
+    private fun success(
+        context: android.content.Context,
+        preset: Preset,
+        before: SourceItem = source,
+    ): PresetPipeline.Result.Success {
         val file = File(context.cacheDir, "${preset.id}-${System.nanoTime()}.jpg").apply { writeBytes(byteArrayOf(1, 2)) }
         val stored = OutputStore.StoredItem("job", file, file.name, file.length(), "image/jpeg")
-        return PresetPipeline.Result.Success(stored, source, 100, 80, EncodeFormat.JPEG)
+        return PresetPipeline.Result.Success(stored, before, 100, 80, EncodeFormat.JPEG)
     }
 }
 
@@ -202,6 +229,7 @@ private class FakePipelineRunner(
         onProgress: (PresetPipeline.Step) -> Unit,
     ): PresetPipeline.Result {
         onProgress(PresetPipeline.Step.Decoding)
+        yield()
         return result(source, preset, jobId)
     }
 }
