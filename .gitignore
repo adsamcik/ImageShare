@@ -1,0 +1,10 @@
+# Android / Gradle / IntelliJ
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+.cxx/
+.kotlin/
+
