@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider
+            android:name="com.imageshare.core.io.GeneratedImageProvider"
+            android:authorities="com.imageshare.core.io.test.generated"
+            android:exported="false" />
+    </application>
+</manifest>
