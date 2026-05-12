@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">ImageShare</string>
-    <string name="top_bar_title">← ImageShare</string>
+    <string name="top_bar_title">ImageShare</string>
     <string name="sources_title">Sources</string>
     <string name="preset_title">Preset</string>
     <string name="resize_section_title">Resize</string>
@@ -90,13 +90,15 @@
     <string name="output_format_label">Output format</string>
     <string name="metadata_label">Metadata</string>
     <string name="reduction_neg_warning">Output is larger than input — consider lower quality</string>
-    <string name="metadata_label_strip_all">StripAll</string>
-    <string name="metadata_label_preserve_safe">PreserveSafe</string>
-    <string name="metadata_label_preserve_all">PreserveAll</string>
     <string name="view_comparison">View comparison</string>
     <string name="comparison_close">Close</string>
-    <string name="before_after_card_a11y">Result for %1$s: before %2$s, %3$d by %4$d pixels; after %5$s, %6$d by %7$d pixels; %8$d percent reduction; format %9$s; metadata %10$s</string>
+    <string name="before_after_card_a11y">Result for %1$s: before %2$s, %3$s; after %4$s, %5$s; %6$d percent reduction; format %7$s; metadata %8$s</string>
+    <string name="before_after_card_a11y_no_reduction">Result for %1$s: before %2$s, %3$s; after %4$s, %5$s; format %6$s; metadata %7$s</string>
     <string name="comparison_screen_a11y">Comparison view, drag horizontally to compare before and after</string>
+    <string name="comparison_drag_handle_a11y">Drag to compare before and after</string>
+    <string name="comparison_split_state">Split at %1$d percent</string>
+    <string name="reduction_percent_fmt">%1$d%%</string>
+    <string name="dash_placeholder">—</string>
     <string name="metadata_strip_all">Strip all</string>
     <string name="metadata_preserve_safe">Preserve safe</string>
     <string name="metadata_preserve_all">Preserve all</string>

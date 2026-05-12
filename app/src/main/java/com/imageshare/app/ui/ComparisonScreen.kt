@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -38,8 +41,11 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -47,6 +53,9 @@ import coil.request.ImageRequest
 import coil.size.Precision
 import com.imageshare.app.R
 import kotlin.math.roundToInt
+
+private val Role.Companion.Slider: Role
+    get() = Role.ValuePicker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,6 +74,8 @@ fun ComparisonScreen(
         scale = (scale * zoomChange).coerceIn(1f, 4f)
         offset = if (scale == 1f) Offset.Zero else offset + panChange
     }
+    val handleDescription = stringResource(R.string.comparison_drag_handle_a11y)
+    val splitState = stringResource(R.string.comparison_split_state, (sliderFraction * 100).roundToInt())
 
     Surface(
         modifier = Modifier
@@ -81,7 +92,10 @@ fun ComparisonScreen(
                             onClick = onClose,
                             modifier = Modifier.testTag("comparison-close"),
                         ) {
-                            Text(stringResource(R.string.comparison_close))
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.comparison_close),
+                            )
                         }
                     },
                 )
@@ -134,17 +148,31 @@ fun ComparisonScreen(
                 }
                 Box(
                     modifier = Modifier
-                        .offset { IntOffset((widthPx * sliderFraction).roundToInt() - 2, 0) }
-                        .width(4.dp)
+                        .offset {
+                            IntOffset((widthPx * sliderFraction).roundToInt() - 22.dp.roundToPx(), 0)
+                        }
+                        .width(44.dp)
                         .fillMaxHeight()
-                        .background(MaterialTheme.colorScheme.primary)
                         .pointerInput(widthPx) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
                                 sliderFraction = ((widthPx * sliderFraction + dragAmount.x) / widthPx).coerceIn(0f, 1f)
                             }
+                        }
+                        .semantics {
+                            contentDescription = handleDescription
+                            role = Role.Slider
+                            stateDescription = splitState
                         },
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(4.dp)
+                            .fillMaxHeight()
+                            .background(MaterialTheme.colorScheme.surface),
+                    )
+                }
             }
         }
     }

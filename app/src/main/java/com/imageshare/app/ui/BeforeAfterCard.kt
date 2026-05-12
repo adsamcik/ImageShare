@@ -40,7 +40,6 @@ import com.imageshare.app.R
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.feature.preset.MetadataPolicy
-import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
@@ -50,32 +49,44 @@ fun BeforeAfterCard(
     effectiveMetadata: MetadataPolicy,
     onExpandTapped: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val unknownSize = stringResource(R.string.unknown_size)
-    val beforeSize = formatSize(result.before.sizeBytes, unknown = unknownSize)
-    val afterSize = formatSize(result.stored.sizeBytes, unknown = unknownSize)
-    val beforeSizeA11y = formatSizeAccessible(result.before.sizeBytes, unknown = unknownSize)
-    val afterSizeA11y = formatSizeAccessible(result.stored.sizeBytes, unknown = unknownSize)
+    val beforeSize = fileSizeText(result.before.sizeBytes)
+    val afterSize = fileSizeText(result.stored.sizeBytes)
+    val beforeSizeA11y = accessibleFileSizeText(result.before.sizeBytes)
+    val afterSizeA11y = accessibleFileSizeText(result.stored.sizeBytes)
     val beforeDims = dimensionsText(result.before.width, result.before.height)
     val afterDims = dimensionsText(result.finalWidth, result.finalHeight)
+    val beforeDimsA11y = accessibleDimensionsText(result.before.width, result.before.height)
+    val afterDimsA11y = accessibleDimensionsText(result.finalWidth, result.finalHeight)
     val reduction = reductionPct(result.before.sizeBytes, result.stored.sizeBytes)
-    val reductionText = reduction?.let { String.format(Locale.getDefault(), "%d%%", it) } ?: "—"
+    val reductionText = reduction?.let { stringResource(R.string.reduction_percent_fmt, it) }
+        ?: stringResource(R.string.dash_placeholder)
     val format = formatLabel(result.format)
     val metadata = metadataLabel(effectiveMetadata)
     val name = result.before.displayName ?: stringResource(R.string.unnamed_image)
-    val description = stringResource(
-        R.string.before_after_card_a11y,
-        name,
-        beforeSizeA11y,
-        result.before.width ?: 0,
-        result.before.height ?: 0,
-        afterSizeA11y,
-        result.finalWidth,
-        result.finalHeight,
-        reduction ?: 0,
-        format,
-        metadata,
-    )
+    val description = if (reduction != null) {
+        stringResource(
+            R.string.before_after_card_a11y,
+            name,
+            beforeSizeA11y,
+            beforeDimsA11y,
+            afterSizeA11y,
+            afterDimsA11y,
+            reduction,
+            format,
+            metadata,
+        )
+    } else {
+        stringResource(
+            R.string.before_after_card_a11y_no_reduction,
+            name,
+            beforeSizeA11y,
+            beforeDimsA11y,
+            afterSizeA11y,
+            afterDimsA11y,
+            format,
+            metadata,
+        )
+    }
     val afterUri = Uri.fromFile(result.stored.file)
 
     Card(
@@ -176,38 +187,6 @@ internal fun reductionPct(before: Long?, after: Long): Int? {
     return (((before - after).toDouble() / before.toDouble()) * 100.0).roundToInt()
 }
 
-internal fun formatSize(bytes: Long?, locale: Locale = Locale.getDefault(), unknown: String = "—"): String {
-    if (bytes == null) return unknown
-    val kb = bytes / BYTES_PER_KIB.toDouble()
-    return if (kb < BYTES_PER_KIB) {
-        String.format(locale, "%.1f KB", kb)
-    } else {
-        String.format(locale, "%.1f MB", kb / BYTES_PER_KIB)
-    }
-}
-
-internal fun formatSizeAccessible(
-    bytes: Long?,
-    locale: Locale = Locale.getDefault(),
-    unknown: String = "unknown size",
-): String {
-    if (bytes == null) return unknown
-    val kb = bytes / BYTES_PER_KIB.toDouble()
-    return if (kb < BYTES_PER_KIB) {
-        String.format(locale, "%.1f kilobytes", kb)
-    } else {
-        String.format(locale, "%.1f megabytes", kb / BYTES_PER_KIB)
-    }
-}
-
-private fun dimensionsText(width: Int?, height: Int?): String {
-    return if (width != null && height != null) {
-        "$width × $height"
-    } else {
-        "—"
-    }
-}
-
 @Composable
 private fun formatLabel(format: EncodeFormat): String = when (format) {
     EncodeFormat.JPEG -> stringResource(R.string.output_format_jpeg)
@@ -218,9 +197,7 @@ private fun formatLabel(format: EncodeFormat): String = when (format) {
 
 @Composable
 private fun metadataLabel(policy: MetadataPolicy): String = when (policy) {
-    MetadataPolicy.StripAll -> stringResource(R.string.metadata_label_strip_all)
-    MetadataPolicy.PreserveSafe -> stringResource(R.string.metadata_label_preserve_safe)
-    MetadataPolicy.PreserveAll -> stringResource(R.string.metadata_label_preserve_all)
+    MetadataPolicy.StripAll -> stringResource(R.string.metadata_strip_all)
+    MetadataPolicy.PreserveSafe -> stringResource(R.string.metadata_preserve_safe)
+    MetadataPolicy.PreserveAll -> stringResource(R.string.metadata_preserve_all)
 }
-
-private const val BYTES_PER_KIB = 1024

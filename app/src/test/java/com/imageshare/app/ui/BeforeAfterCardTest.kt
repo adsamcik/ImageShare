@@ -1,6 +1,5 @@
 package com.imageshare.app.ui
 
-import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -22,7 +21,7 @@ class BeforeAfterCardTest {
     }
 
     @Test
-    fun formatSizeFormatsKilobytes() {
-        assertEquals("1.2 KB", formatSize(1_234, Locale.US))
+    fun reductionPctReturnsNullWhenBeforeZero() {
+        assertNull(reductionPct(before = 0, after = 400))
     }
 }

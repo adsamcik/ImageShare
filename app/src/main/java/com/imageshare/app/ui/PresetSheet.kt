@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -81,7 +82,6 @@ import com.imageshare.feature.preset.OutputFormat
 import com.imageshare.feature.preset.Preset
 import com.imageshare.feature.preset.ResizeMode
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
@@ -185,7 +185,6 @@ fun MainScreen(viewModel: MainViewModel) {
         snackbarHostState = snackbarHostState,
     )
 }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PresetSheet(
@@ -222,6 +221,25 @@ fun PresetSheet(
             Scaffold(
                 topBar = { TopAppBar(title = { Text(stringResource(R.string.top_bar_title)) }) },
                 snackbarHost = { SnackbarHost(snackbarHostState) },
+                bottomBar = {
+                    Surface(
+                        tonalElevation = 3.dp,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        ProcessButtons(
+                            processEnabled = sources.isNotEmpty() && !isProcessing && !upscaleBlocked,
+                            isProcessing = isProcessing,
+                            saveEnabled = hasSuccessfulResult,
+                            onProcessAndShare = onProcessAndShare,
+                            onCancelBatch = onCancelBatch,
+                            onSaveCopy = onSaveCopy,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .navigationBarsPadding(),
+                        )
+                    }
+                },
             ) { paddingValues ->
                 Column(
                     modifier = Modifier
@@ -259,14 +277,6 @@ fun PresetSheet(
                             onExpandResult = onExpandResult,
                         )
                     }
-                        ProcessButtons(
-                            processEnabled = sources.isNotEmpty() && !isProcessing && !upscaleBlocked,
-                            isProcessing = isProcessing,
-                            saveEnabled = hasSuccessfulResult,
-                            onProcessAndShare = onProcessAndShare,
-                            onCancelBatch = onCancelBatch,
-                            onSaveCopy = onSaveCopy,
-                        )
                 }
             }
         }
@@ -349,7 +359,7 @@ private fun SourcesSection(sources: List<SourceItem>) {
 @Composable
 private fun SourceRow(source: SourceItem) {
     val name = source.displayName ?: stringResource(R.string.unnamed_image)
-    val description = "$name, ${dimensionsText(source, accessible = true)}, ${fileSizeText(source.sizeBytes, accessible = true)}"
+    val description = "$name, ${accessibleDimensionsText(source)}, ${accessibleFileSizeText(source.sizeBytes)}"
     val details = stringResource(R.string.source_detail_summary, dimensionsText(source), fileSizeText(source.sizeBytes))
     Column(
         modifier = Modifier
@@ -545,9 +555,10 @@ private fun ProcessButtons(
     onProcessAndShare: () -> Unit,
     onCancelBatch: () -> Unit,
     onSaveCopy: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val processDescription = stringResource(R.string.process_and_share_description)
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = onProcessAndShare,
@@ -673,53 +684,6 @@ private fun MetadataPolicy.displayText(): String = when (this) {
 }
 
 @Composable
-private fun dimensionsText(source: SourceItem, accessible: Boolean = false): String {
-    val width = source.width
-    val height = source.height
-    return if (width != null && height != null) {
-        if (accessible) {
-            stringResource(R.string.dimensions_accessible, width, height)
-        } else {
-            stringResource(R.string.dimensions_text, width, height)
-        }
-    } else {
-        stringResource(R.string.unknown_dimensions)
-    }
-}
-
-@Composable
-private fun fileSizeText(bytes: Long?, accessible: Boolean = false): String {
-    if (bytes == null) return stringResource(R.string.unknown_size)
-    val kb = bytes / BYTES_PER_KIB.toDouble()
-    val locale = Locale.getDefault()
-    if (kb < BYTES_PER_KIB) {
-        val amount = String.format(locale, "%.1f", kb)
-        return if (accessible) {
-            stringResource(R.string.kilobytes_accessible, amount)
-        } else {
-            stringResource(R.string.kilobytes_text, amount)
-        }
-    }
-    val mb = kb / BYTES_PER_KIB
-    val amount = String.format(locale, "%.1f", mb)
-    return if (accessible) {
-        stringResource(R.string.megabytes_accessible, amount)
-    } else {
-        stringResource(R.string.megabytes_text, amount)
-    }
-}
-
-private fun fileSizeText(context: android.content.Context, bytes: Long): String {
-    val kb = bytes / BYTES_PER_KIB.toDouble()
-    val locale = Locale.getDefault()
-    if (kb < BYTES_PER_KIB) {
-        return context.getString(R.string.kilobytes_text, String.format(locale, "%.1f", kb))
-    }
-    val mb = kb / BYTES_PER_KIB
-    return context.getString(R.string.megabytes_text, String.format(locale, "%.1f", mb))
-}
-
-@Composable
 private fun formatLabel(format: OutputFormat, accessible: Boolean = false): String = when (format) {
     OutputFormat.JPEG -> stringResource(if (accessible) R.string.output_format_jpeg_accessible else R.string.output_format_jpeg)
     OutputFormat.PNG -> stringResource(if (accessible) R.string.output_format_png_accessible else R.string.output_format_png)
@@ -748,5 +712,3 @@ private fun quantityStringResource(id: Int, quantity: Int, vararg formatArgs: An
     val resources = LocalContext.current.resources
     return resources.getQuantityString(id, quantity, *formatArgs)
 }
-
-private const val BYTES_PER_KIB = 1024
