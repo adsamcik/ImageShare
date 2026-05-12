@@ -17,9 +17,24 @@ data class SourceItem(
     val height: Int?,
 )
 
-sealed class IntakeError : Exception() {
-    data class GrantLost(val uri: Uri) : IntakeError()
-    data class QueryFailed(val uri: Uri, override val cause: Throwable) : IntakeError()
+/**
+ * Failure while resolving picker input.
+ *
+ * [SecurityException]s are surfaced as the [cause] of [QueryFailed], wrapped as [GrantLost]:
+ *
+ * ```
+ * try { coordinator.resolve(uri) } catch (e: IntakeError.QueryFailed) {
+ *     when (val cause = e.cause) {
+ *         is IntakeError.GrantLost -> /* re-pick or show toast */
+ *         else -> /* generic error UI */
+ *     }
+ * }
+ * ```
+ */
+sealed class IntakeError(message: String, cause: Throwable? = null) : Exception(message, cause) {
+    data class GrantLost(val uri: Uri) : IntakeError("Permission grant lost for $uri")
+    data class QueryFailed(val uri: Uri, override val cause: Throwable) :
+        IntakeError("Failed to resolve metadata for $uri", cause)
 }
 
 class InputCoordinator(private val resolver: ContentResolver) {
