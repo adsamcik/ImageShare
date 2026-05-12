@@ -36,6 +36,11 @@ class PresetRepositoryTest {
     }
 
     @Test
+    fun emailPresetHasOneMegabyteTargetSize() {
+        assertEquals(1L * 1024L * 1024L, DefaultPresets.Email.targetSizeBytes)
+    }
+
+    @Test
     fun qualityBelowRangeThrows() {
         assertThrows(IllegalArgumentException::class.java) {
             Preset(

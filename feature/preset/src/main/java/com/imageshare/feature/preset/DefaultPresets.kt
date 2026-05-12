@@ -11,6 +11,7 @@ object DefaultPresets {
         quality = 70,
         metadata = MetadataPolicy.StripAll,
         alphaFallback = AlphaFallback.FillWhite,
+        targetSizeBytes = EMAIL_TARGET_BYTES,
     )
 
     val BestQuality = Preset(
@@ -41,6 +42,7 @@ object DefaultPresets {
         quality = 60,
         metadata = MetadataPolicy.StripAll,
         alphaFallback = AlphaFallback.FillWhite,
+        targetSizeBytes = EMAIL_TARGET_BYTES,
     )
 
     val Custom = Preset(
@@ -65,4 +67,7 @@ object DefaultPresets {
     private const val BEST_QUALITY_LONG_EDGE_PX = 2560
     private const val SOCIAL_UPLOAD_LONG_EDGE_PX = 2048
     private const val EMAIL_LONG_EDGE_PX = 1280
+    private const val EMAIL_TARGET_BYTES = 1L * 1024L * 1024L
 }
+
+
