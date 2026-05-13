@@ -12,6 +12,7 @@
     <string name="open_documents_button">Open documents (advanced)</string>
     <string name="open_documents_tooltip">Open files via Files app; can be reopened later</string>
     <string name="recents_section_title">Recents</string>
+    <string name="recents_chip_a11y">Open %1$s</string>
     <string name="recents_remove_a11y">Remove from recents</string>
     <string name="recents_empty">No recent files yet</string>
     <string name="process_and_share">Process &amp; share</string>

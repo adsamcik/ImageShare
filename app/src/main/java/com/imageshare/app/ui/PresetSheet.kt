@@ -17,6 +17,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,7 +44,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.InputChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -64,8 +64,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -74,6 +77,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Precision
 import com.imageshare.app.AlphaConflictStrategy
 import com.imageshare.app.ComparisonState
 import com.imageshare.app.MainViewModel
@@ -427,24 +433,39 @@ private fun RecentUriChip(
     onSelected: () -> Unit,
     onRemoved: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val imageRequest = remember(uri) {
+        ImageRequest.Builder(context)
+            .data(uri)
+            .size(120, 120)
+            .precision(Precision.INEXACT)
+            .crossfade(true)
+            .build()
+    }
+    val displayName = stringResource(R.string.unnamed_image)
+    val chipDescription = stringResource(R.string.recents_chip_a11y, displayName)
     val removeDescription = stringResource(R.string.recents_remove_a11y)
-    InputChip(
-        selected = false,
-        onClick = onSelected,
-        label = { Text(uri.lastPathSegment ?: uri.toString()) },
-        trailingIcon = {
-            IconButton(
-                onClick = onRemoved,
-                modifier = Modifier
-                    .size(32.dp)
-                    .semantics { contentDescription = removeDescription },
-            ) {
-                Icon(Icons.Filled.Close, contentDescription = removeDescription)
-            }
-        },
-        modifier = Modifier
-            .heightIn(max = 60.dp),
-    )
+
+    Box(modifier = Modifier.size(60.dp)) {
+        AsyncImage(
+            model = imageRequest,
+            contentDescription = chipDescription,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(60.dp)
+                .clip(MaterialTheme.shapes.medium)
+                .clickable { onSelected() },
+        )
+        IconButton(
+            onClick = onRemoved,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(24.dp)
+                .semantics { contentDescription = removeDescription },
+        ) {
+            Icon(Icons.Filled.Close, contentDescription = removeDescription)
+        }
+    }
 }
 
 @Composable
