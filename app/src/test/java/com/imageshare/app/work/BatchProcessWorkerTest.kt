@@ -105,7 +105,7 @@ class BatchProcessWorkerTest {
                     state = BatchProcessWorker.STATE_PENDING,
                     storedFilePath = null,
                     outputMimeType = null,
-                    errorMessage = null,
+                    errorCode = null,
                     updatedAt = 1_000L,
                 )
             },

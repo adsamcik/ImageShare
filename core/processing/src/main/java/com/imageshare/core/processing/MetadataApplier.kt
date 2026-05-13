@@ -5,6 +5,7 @@ import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
+import java.io.ByteArrayOutputStream
 import java.lang.reflect.Modifier
 import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
@@ -21,10 +22,10 @@ class MetadataApplier(private val resolver: ContentResolver? = null) {
      * - PreserveSafe strips all tags, writes the whitelist, and sets Orientation=1.
      * - PreserveAll copies all standard tags and sets Orientation=1.
      *
-     * PNG is pass-through for every mode. PNG metadata preservation and tEXt/iTXt
-     * removal are out of Phase 1 MVP scope.
+     * PNG StripAll drops metadata-bearing ancillary chunks. PreserveSafe and
+     * PreserveAll pass PNG chunks through unchanged; selective PNG preservation
+     * is intentionally not part of the v1.0 contract.
      *
-     * PNG tEXt/iTXt chunks are not inspected or rewritten in Phase 1.
      * Preserve modes without source bytes or a resolvable source Uri fall back to
      * [MetadataMode.StripAll].
      */
@@ -35,7 +36,7 @@ class MetadataApplier(private val resolver: ContentResolver? = null) {
         source: MetadataSource = MetadataSource.NONE,
     ): ByteArray = withContext(Dispatchers.IO) {
         when (format) {
-            EncodeFormat.PNG -> encoded.copyOf()
+            EncodeFormat.PNG -> if (mode == MetadataMode.StripAll) stripPngMetadata(encoded) else encoded.copyOf()
             EncodeFormat.JPEG,
             EncodeFormat.HEIF,
             EncodeFormat.WEBP_LOSSY,
@@ -43,6 +44,46 @@ class MetadataApplier(private val resolver: ContentResolver? = null) {
             -> applyExifMode(encoded, mode, source)
         }
     }
+
+    private fun stripPngMetadata(bytes: ByteArray): ByteArray {
+        val hasPngSignature = bytes.size >= PNG_SIGNATURE.size &&
+            bytes.take(PNG_SIGNATURE.size).toByteArray().contentEquals(PNG_SIGNATURE)
+        if (!hasPngSignature) {
+            return bytes.copyOf()
+        }
+
+        val output = ByteArrayOutputStream(bytes.size)
+        output.write(bytes, 0, PNG_SIGNATURE.size)
+        var offset = PNG_SIGNATURE.size
+        var malformed = false
+        var done = false
+        while (!done && offset + PNG_CHUNK_HEADER_SIZE + PNG_CHUNK_CRC_SIZE <= bytes.size) {
+            val length = bytes.readPngInt(offset)
+            val chunkStart = offset
+            val typeStart = offset + PNG_CHUNK_LENGTH_SIZE
+            val dataStart = typeStart + PNG_CHUNK_TYPE_SIZE
+            val chunkEnd = dataStart + length + PNG_CHUNK_CRC_SIZE
+            if (length < 0 || chunkEnd > bytes.size) {
+                malformed = true
+                done = true
+                continue
+            }
+
+            val type = bytes.decodeToString(typeStart, dataStart)
+            if (type in PNG_ALLOWED_CHUNKS) {
+                output.write(bytes, chunkStart, chunkEnd - chunkStart)
+            }
+            offset = chunkEnd
+            done = type == PNG_IEND
+        }
+        return if (malformed) bytes.copyOf() else output.toByteArray()
+    }
+
+    private fun ByteArray.readPngInt(offset: Int): Int =
+        ((this[offset].toInt() and BYTE_MASK) shl PNG_BYTE_3_SHIFT) or
+            ((this[offset + PNG_BYTE_1_OFFSET].toInt() and BYTE_MASK) shl PNG_BYTE_2_SHIFT) or
+            ((this[offset + PNG_BYTE_2_OFFSET].toInt() and BYTE_MASK) shl PNG_BYTE_1_SHIFT) or
+            (this[offset + PNG_BYTE_3_OFFSET].toInt() and BYTE_MASK)
 
     private fun applyExifMode(
         encoded: ByteArray,
@@ -147,5 +188,39 @@ class MetadataApplier(private val resolver: ContentResolver? = null) {
 
         private const val TEMP_FILE_PREFIX = "imageshare-meta-"
         private const val TEMP_FILE_SUFFIX = ".bin"
+        private const val BYTE_MASK = 0xff
+        private const val PNG_BYTE_3_SHIFT = 24
+        private const val PNG_BYTE_2_SHIFT = 16
+        private const val PNG_BYTE_1_SHIFT = 8
+        private const val PNG_BYTE_1_OFFSET = 1
+        private const val PNG_BYTE_2_OFFSET = 2
+        private const val PNG_BYTE_3_OFFSET = 3
+        private const val PNG_CHUNK_LENGTH_SIZE = 4
+        private const val PNG_CHUNK_TYPE_SIZE = 4
+        private const val PNG_CHUNK_CRC_SIZE = 4
+        private const val PNG_CHUNK_HEADER_SIZE = PNG_CHUNK_LENGTH_SIZE + PNG_CHUNK_TYPE_SIZE
+        private const val PNG_IEND = "IEND"
+        private val PNG_SIGNATURE = byteArrayOf(
+            0x89.toByte(),
+            0x50,
+            0x4E,
+            0x47,
+            0x0D,
+            0x0A,
+            0x1A,
+            0x0A,
+        )
+        private val PNG_ALLOWED_CHUNKS = setOf(
+            "IHDR",
+            "PLTE",
+            "IDAT",
+            "IEND",
+            "tRNS",
+            "gAMA",
+            "cHRM",
+            "sRGB",
+            "iCCP",
+            "bKGD",
+        )
     }
 }

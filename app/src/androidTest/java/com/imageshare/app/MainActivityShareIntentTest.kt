@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.os.Bundle
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -18,6 +19,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -121,6 +123,22 @@ class MainActivityShareIntentTest {
             Thread.sleep(500L)
 
             assertEquals(1, sharedIntakeDir.listFiles()?.count { it.isDirectory })
+        }
+    }
+
+    @Test
+    fun nonUriExtraStreamDoesNotCrashOrStageContent() {
+        val appCacheDir = ApplicationProvider.getApplicationContext<android.content.Context>().cacheDir
+        val sharedIntakeDir = File(appCacheDir, "shared-intake").apply { deleteRecursively() }
+        val intent = Intent(Intent.ACTION_SEND)
+            .setClassName("com.imageshare.app", "com.imageshare.app.MainActivity")
+            .setType("image/jpeg")
+            .putExtra(Intent.EXTRA_STREAM, Bundle())
+
+        ActivityScenario.launch<MainActivity>(intent).use {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            Thread.sleep(500L)
+            assertFalse(sharedIntakeDir.exists())
         }
     }
 

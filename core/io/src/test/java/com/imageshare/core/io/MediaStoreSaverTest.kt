@@ -1,7 +1,8 @@
 package com.imageshare.core.io
 
-import android.provider.MediaStore
 import android.content.ContentUris
+import android.provider.MediaStore
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,7 +14,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import java.io.File
-import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.OutputStream
 
 @RunWith(RobolectricTestRunner::class)
 class MediaStoreSaverTest {
@@ -71,6 +73,20 @@ class MediaStoreSaverTest {
         assertEquals(missing, result.failed.single().first)
     }
 
+    @Test
+    fun saveDeletesOrphanRowOnCopyFailure() = runBlocking {
+        val source = sourceFile("copy-failure", byteArrayOf(8, 9))
+        val id = 103
+        val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toLong())
+        shadowOf(resolver).setNextDatabaseIdForInserts(id)
+        shadowOf(resolver).registerOutputStream(uri, ThrowingOutputStream())
+
+        val failure = runCatching { saver.save(source, "broken.jpg", "image/jpeg") }.exceptionOrNull()
+
+        assertTrue(failure is MediaStoreSaver.SaveError.CopyFailed)
+        assertTrue(shadowOf(resolver).deleteStatements.isNotEmpty())
+    }
+
     private fun sourceFile(name: String, bytes: ByteArray): File =
         File(context.cacheDir, "media-store-$name-${System.nanoTime()}.jpg").apply {
             writeBytes(bytes)
@@ -88,6 +104,12 @@ class MediaStoreSaverTest {
                 ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, (startId + offset).toLong()),
                 ByteArrayOutputStream(),
             )
+        }
+    }
+
+    private class ThrowingOutputStream : OutputStream() {
+        override fun write(b: Int) {
+            throw IOException("copy failed")
         }
     }
 }

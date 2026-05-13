@@ -62,6 +62,7 @@ class MediaStoreSaver(private val resolver: ContentResolver) {
                 )
                 SavedItem(sourceFile, uri, safeDisplayName, sourceFile.length())
             } catch (error: IOException) {
+                runCatching { resolver.delete(uri, null, null) }
                 throw SaveError.CopyFailed(error)
             }
         }

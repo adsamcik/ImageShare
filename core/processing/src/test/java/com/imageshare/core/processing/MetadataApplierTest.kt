@@ -5,8 +5,10 @@ import android.graphics.Color
 import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.zip.CRC32
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Ignore
@@ -88,13 +90,29 @@ class MetadataApplierTest {
     }
 
     @Test
-    fun pngPassesThroughAllModesUnchanged() = runBlocking {
+    fun pngPreserveModesPassThroughUnchanged() = runBlocking {
         val input = bitmapBytes(Bitmap.CompressFormat.PNG)
 
-        MetadataMode.entries.forEach { mode ->
+        listOf(MetadataMode.PreserveSafe, MetadataMode.PreserveAll).forEach { mode ->
             val result = applier.apply(input, EncodeFormat.PNG, mode)
             assertTrue("mode=$mode", result.contentEquals(input))
         }
+    }
+
+    @Test
+    fun pngStripAllRemovesTextAndExifChunks() = runBlocking {
+        val input = bitmapBytes(Bitmap.CompressFormat.PNG)
+            .injectPngChunk("tEXt", "GPS\u000051.5N 0.1W".encodeToByteArray())
+            .injectPngChunk("eXIf", "Exif\u0000\u0000sensitive".encodeToByteArray())
+
+        val result = applier.apply(input, EncodeFormat.PNG, MetadataMode.StripAll, MetadataSource.NONE)
+        val chunks = result.pngChunkTypes()
+
+        assertFalse(chunks.contains("tEXt"))
+        assertFalse(chunks.contains("eXIf"))
+        assertTrue(chunks.contains("IHDR"))
+        assertTrue(chunks.contains("IDAT"))
+        assertTrue(chunks.contains("IEND"))
     }
 
     @Ignore("Robolectric does not consistently support WebP EXIF writing; covered by instrumented test.")
@@ -168,11 +186,80 @@ class MetadataApplierTest {
             delete()
         }
 
+    private fun ByteArray.injectPngChunk(chunkType: String, chunkData: ByteArray): ByteArray {
+        val iendOffset = chunkOffset("IEND")
+        val output = ByteArrayOutputStream(size + PNG_CHUNK_OVERHEAD + chunkData.size)
+        output.write(this, 0, iendOffset)
+        output.writePngInt(chunkData.size)
+        val typeBytes = chunkType.encodeToByteArray()
+        output.write(typeBytes)
+        output.write(chunkData)
+        output.writePngInt(crc(typeBytes, chunkData))
+        output.write(this, iendOffset, size - iendOffset)
+        return output.toByteArray()
+    }
+
+    private fun ByteArray.pngChunkTypes(): List<String> {
+        val chunks = mutableListOf<String>()
+        var offset = PNG_SIGNATURE_SIZE
+        while (offset + PNG_CHUNK_OVERHEAD <= size) {
+            val length = readPngInt(offset)
+            val typeStart = offset + PNG_LENGTH_SIZE
+            val dataStart = typeStart + PNG_TYPE_SIZE
+            val chunkEnd = dataStart + length + PNG_CRC_SIZE
+            if (length < 0 || chunkEnd > size) break
+            chunks += decodeToString(typeStart, dataStart)
+            offset = chunkEnd
+        }
+        return chunks
+    }
+
+    private fun ByteArray.chunkOffset(chunkType: String): Int {
+        var offset = PNG_SIGNATURE_SIZE
+        while (offset + PNG_CHUNK_OVERHEAD <= size) {
+            val length = readPngInt(offset)
+            val typeStart = offset + PNG_LENGTH_SIZE
+            val dataStart = typeStart + PNG_TYPE_SIZE
+            if (decodeToString(typeStart, dataStart) == chunkType) return offset
+            offset = dataStart + length + PNG_CRC_SIZE
+        }
+        error("PNG chunk $chunkType not found")
+    }
+
+    private fun ByteArray.readPngInt(offset: Int): Int =
+        ((this[offset].toInt() and BYTE_MASK) shl PNG_BYTE_3_SHIFT) or
+            ((this[offset + 1].toInt() and BYTE_MASK) shl PNG_BYTE_2_SHIFT) or
+            ((this[offset + 2].toInt() and BYTE_MASK) shl PNG_BYTE_1_SHIFT) or
+            (this[offset + 3].toInt() and BYTE_MASK)
+
+    private fun ByteArrayOutputStream.writePngInt(value: Int) {
+        write((value ushr PNG_BYTE_3_SHIFT) and BYTE_MASK)
+        write((value ushr PNG_BYTE_2_SHIFT) and BYTE_MASK)
+        write((value ushr PNG_BYTE_1_SHIFT) and BYTE_MASK)
+        write(value and BYTE_MASK)
+    }
+
+    private fun crc(type: ByteArray, data: ByteArray): Int {
+        val crc = CRC32()
+        crc.update(type)
+        crc.update(data)
+        return crc.value.toInt()
+    }
+
     private companion object {
         private const val DATETIME = "2024:01:01 12:00:00"
         private const val GPS_LATITUDE = "12/1,20/1,42000/1000"
         private const val GPS_LONGITUDE = "67/1,53/1,24000/1000"
         private val TEST_DIR = File("core/processing/build/test-metadata")
+        private const val BYTE_MASK = 0xff
+        private const val PNG_SIGNATURE_SIZE = 8
+        private const val PNG_LENGTH_SIZE = 4
+        private const val PNG_TYPE_SIZE = 4
+        private const val PNG_CRC_SIZE = 4
+        private const val PNG_CHUNK_OVERHEAD = PNG_LENGTH_SIZE + PNG_TYPE_SIZE + PNG_CRC_SIZE
+        private const val PNG_BYTE_3_SHIFT = 24
+        private const val PNG_BYTE_2_SHIFT = 16
+        private const val PNG_BYTE_1_SHIFT = 8
         private val GPS_TAGS = listOf(
             ExifInterface.TAG_GPS_LATITUDE,
             ExifInterface.TAG_GPS_LONGITUDE,

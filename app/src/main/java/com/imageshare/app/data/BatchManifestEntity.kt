@@ -10,6 +10,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "batch_manifest", primaryKeys = ["jobId", "sourceIndex"])
 data class BatchManifestEntity(
@@ -19,9 +21,11 @@ data class BatchManifestEntity(
     val state: String,
     val storedFilePath: String?,
     val outputMimeType: String?,
-    val errorMessage: String?,
+    val errorCode: String?,
     val updatedAt: Long,
 )
+
+enum class BatchItemError { Decode, Resize, Encode, MetadataApply, Store, Unknown }
 
 @Dao
 interface BatchManifestDao {
@@ -47,15 +51,61 @@ interface BatchManifestDao {
     suspend fun purgeOlderThan(cutoffMillis: Long): Int
 }
 
-@Database(entities = [BatchManifestEntity::class], version = 1, exportSchema = true)
+@Database(entities = [BatchManifestEntity::class], version = 2, exportSchema = true)
 abstract class ImageShareDatabase : RoomDatabase() {
     abstract fun batchManifestDao(): BatchManifestDao
 
     companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `batch_manifest_new` (
+                        `jobId` TEXT NOT NULL,
+                        `sourceIndex` INTEGER NOT NULL,
+                        `sourceUriString` TEXT NOT NULL,
+                        `state` TEXT NOT NULL,
+                        `storedFilePath` TEXT,
+                        `outputMimeType` TEXT,
+                        `errorCode` TEXT,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`jobId`, `sourceIndex`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `batch_manifest_new` (
+                        `jobId`,
+                        `sourceIndex`,
+                        `sourceUriString`,
+                        `state`,
+                        `storedFilePath`,
+                        `outputMimeType`,
+                        `errorCode`,
+                        `updatedAt`
+                    )
+                    SELECT
+                        `jobId`,
+                        `sourceIndex`,
+                        `sourceUriString`,
+                        `state`,
+                        `storedFilePath`,
+                        `outputMimeType`,
+                        NULL,
+                        `updatedAt`
+                    FROM `batch_manifest`
+                    """.trimIndent(),
+                )
+                db.execSQL("DROP TABLE `batch_manifest`")
+                db.execSQL("ALTER TABLE `batch_manifest_new` RENAME TO `batch_manifest`")
+            }
+        }
+
         fun create(context: Context): ImageShareDatabase = Room.databaseBuilder(
             context,
             ImageShareDatabase::class.java,
             "imageshare.db",
-        ).build()
+        ).addMigrations(MIGRATION_1_2).build()
     }
 }

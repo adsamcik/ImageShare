@@ -16,6 +16,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.imageshare.app.data.BatchItemError
 import com.imageshare.app.data.BatchManifestDao
 import com.imageshare.app.data.BatchManifestEntity
 import com.imageshare.app.processing.BatchOrchestrator
@@ -365,11 +366,12 @@ class MainViewModel(
                         ?.let { it as? PresetPipeline.Result.Success }
                         ?.stored
                         ?.mimeType,
-                    errorMessage = (state as? BatchOrchestrator.ItemState.Done)
+                    errorCode = (state as? BatchOrchestrator.ItemState.Done)
                         ?.result
                         ?.let { it as? PresetPipeline.Result.Failure }
-                        ?.cause
-                        ?.message,
+                        ?.step
+                        ?.toBatchItemError()
+                        ?.name,
                     updatedAt = System.currentTimeMillis(),
                 )
             },
@@ -549,6 +551,14 @@ private class AndroidSharedIntakeRepository(
 
 private fun PresetPipeline.Result.Failure.isAlphaConflict(): Boolean = cause is EncodeError.AlphaConflict
 
+private fun PresetPipeline.Step.toBatchItemError(): BatchItemError = when (this) {
+    PresetPipeline.Step.Decoding -> BatchItemError.Decode
+    PresetPipeline.Step.Resizing -> BatchItemError.Resize
+    PresetPipeline.Step.Encoding -> BatchItemError.Encode
+    PresetPipeline.Step.ApplyingMetadata -> BatchItemError.MetadataApply
+    PresetPipeline.Step.Storing -> BatchItemError.Store
+}
+
 private fun BatchOrchestrator.ItemState?.manifestState(): String = when (this) {
     is BatchOrchestrator.ItemState.Done -> when (result) {
         is PresetPipeline.Result.Success -> BatchProcessWorker.STATE_DONE
@@ -606,7 +616,7 @@ private fun BatchManifestEntity.toResult(): PresetPipeline.Result {
     }
     return PresetPipeline.Result.Failure(
         before = source,
-        cause = EncodeError.Invalid(errorMessage ?: "Background processing failed"),
+        cause = EncodeError.Invalid(errorCode ?: "Background processing failed"),
         step = PresetPipeline.Step.Storing,
     )
 }

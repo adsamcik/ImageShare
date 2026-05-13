@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -15,12 +16,15 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.imageshare.app.AppContainer
 import com.imageshare.app.R
+import com.imageshare.app.data.BatchItemError
 import com.imageshare.app.data.BatchManifestEntity
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.io.sourceItemFromPersistedUriString
 import com.imageshare.feature.preset.Preset
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 class BatchProcessWorker(
     appContext: Context,
@@ -39,15 +43,16 @@ class BatchProcessWorker(
         val remaining = manifest.filter { it.state == STATE_PENDING }
         if (remaining.isEmpty()) return Result.success()
 
-        return runCatching {
+        return try {
             val workerPreset = preset.withWorkerOverride(inputData.getString(KEY_CUSTOM_OVERRIDE_JSON))
             runBatch(jobId, remaining, workerPreset, manifest.size)
             Result.success()
-        }.getOrElse { error ->
-            if (error is CancellationException) {
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) {
                 markPendingCancelled(jobId)
-                throw error
             }
+            throw error
+        } catch (_: Throwable) {
             Result.failure()
         }
     }
@@ -107,9 +112,18 @@ class BatchProcessWorker(
         return ForegroundInfo(
             NOTIFICATION_ID,
             notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            foregroundServiceType(),
         )
     }
+
+    private fun foregroundServiceType(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // v1.0 batches are expected to finish well under the short-service limit; longer-batch
+            // estimation can switch back to DATA_SYNC once we have real duration telemetry.
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE
+        } else {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        }
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -151,14 +165,17 @@ private fun BatchManifestEntity.withItemState(state: BatchOrchestrator.ItemState
             state = BatchProcessWorker.STATE_DONE,
             storedFilePath = result.stored.file.absolutePath,
             outputMimeType = result.stored.mimeType,
-            errorMessage = null,
+            errorCode = null,
             updatedAt = now(),
         )
-        is PresetPipeline.Result.Failure -> copy(
-            state = BatchProcessWorker.STATE_FAILED,
-            errorMessage = result.cause.message,
-            updatedAt = now(),
-        )
+        is PresetPipeline.Result.Failure -> {
+            Log.w(TAG, "Item failed at ${result.step}", result.cause)
+            copy(
+                state = BatchProcessWorker.STATE_FAILED,
+                errorCode = result.step.toBatchItemError().name,
+                updatedAt = now(),
+            )
+        }
     }
     BatchOrchestrator.ItemState.Cancelled -> copy(state = BatchProcessWorker.STATE_CANCELLED, updatedAt = now())
     BatchOrchestrator.ItemState.Pending,
@@ -166,7 +183,17 @@ private fun BatchManifestEntity.withItemState(state: BatchOrchestrator.ItemState
     -> this
 }
 
+private fun PresetPipeline.Step.toBatchItemError(): BatchItemError = when (this) {
+    PresetPipeline.Step.Decoding -> BatchItemError.Decode
+    PresetPipeline.Step.Resizing -> BatchItemError.Resize
+    PresetPipeline.Step.Encoding -> BatchItemError.Encode
+    PresetPipeline.Step.ApplyingMetadata -> BatchItemError.MetadataApply
+    PresetPipeline.Step.Storing -> BatchItemError.Store
+}
+
 private fun now(): Long = System.currentTimeMillis()
+
+private const val TAG = "BatchProcessWorker"
 
 private fun Context.getStringOrFallback(resId: Int, fallback: String, vararg formatArgs: Any): String =
     runCatching {

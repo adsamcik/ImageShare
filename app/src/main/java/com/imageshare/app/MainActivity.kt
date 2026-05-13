@@ -77,15 +77,16 @@ private fun Intent.getParcelableExtraCompat(name: String): Uri? =
         getParcelableExtra(name, Uri::class.java)
     } else {
         @Suppress("DEPRECATION")
-        getParcelableExtra(name)
+        getParcelableExtra(name) as? Uri
     }
 
 private fun Intent.getParcelableArrayListExtraCompat(name: String): ArrayList<Uri>? =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         getParcelableArrayListExtra(name, Uri::class.java)
     } else {
-        @Suppress("DEPRECATION")
-        getParcelableArrayListExtra(name)
+        @Suppress("DEPRECATION", "UNCHECKED_CAST")
+        val raw = getParcelableArrayListExtra<android.os.Parcelable>(name) ?: return null
+        raw.filterIsInstance<Uri>().let { if (it.isEmpty()) null else ArrayList(it) }
     }
 
 private const val SHARE_RANDOM_BOUND = 10_000
