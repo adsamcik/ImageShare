@@ -2,27 +2,91 @@
   "schemaVersion": 1,
   "device": "manual_local_run",
   "capturedAt": null,
-  "notes": "Initial scaffolding. Run :benchmark:micro:connectedAndroidTest and :benchmark:macro:connectedBenchmarkAndroidTest on a representative midrange device (e.g., Pixel 4a, API 31) and update this file with the captured medians.",
+  "notes": "Initial scaffolding. Run micro and macro benchmark suites on Pixel 4a and Pixel 8 class devices, then update this file with captured medians.",
   "microbenchmarks": {
-    "Decoder.decodeJpeg2000x1500_target1024": { "median_ns": null, "median_alloc_count": null },
-    "Decoder.decodePng800x600WithAlpha_target800": { "median_ns": null, "median_alloc_count": null },
-    "Decoder.decodeWebp1024x768_target1024": { "median_ns": null, "median_alloc_count": null },
-    "Encoder.encodeJpegQ70_1024x768": { "median_ns": null, "median_alloc_count": null },
-    "Encoder.encodePngOpaque_1024x768": { "median_ns": null, "median_alloc_count": null },
-    "Encoder.encodeWebpLossy85_1024x768": { "median_ns": null, "median_alloc_count": null },
-    "Encoder.flattenAlphaThenJpegQ70_1024x768": { "median_ns": null, "median_alloc_count": null },
-    "Resizer.toLongEdge_2000x1500_to_1024": { "median_ns": null, "median_alloc_count": null },
-    "Resizer.toExactCenterCrop_2000x1500_to_1024x1024": { "median_ns": null, "median_alloc_count": null },
-    "MetadataApplier.stripAllJpeg1024": { "median_ns": null, "median_alloc_count": null },
-    "MetadataApplier.preserveSafeJpeg1024": { "median_ns": null, "median_alloc_count": null },
-    "TargetSizeEncoder.encodeToTarget_jpeg_1MB": { "median_ns": null, "median_alloc_count": null, "median_attempts": null },
-    "TargetSizeEncoder.encodeToTarget_jpeg_200KB": { "median_ns": null, "median_alloc_count": null, "median_attempts": null }
+    "Decoder.decodeJpeg2000x1500_target1024": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "Decoder.decodePng800x600WithAlpha_target800": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "Decoder.decodeWebp1024x768_target1024": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "Encoder.encodeJpegQ70_1024x768": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "Encoder.encodePngOpaque_1024x768": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "Encoder.encodeWebpLossy85_1024x768": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "Encoder.flattenAlphaThenJpegQ70_1024x768": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "Resizer.toLongEdge_2000x1500_to_1024": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "Resizer.toExactCenterCrop_2000x1500_to_1024x1024": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "MetadataApplier.stripAllJpeg1024": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "MetadataApplier.preserveSafeJpeg1024": {
+      "median_ns": null,
+      "median_alloc_count": null
+    },
+    "TargetSizeEncoder.encodeToTarget_jpeg_1MB": {
+      "median_ns": null,
+      "median_alloc_count": null,
+      "median_attempts": null
+    },
+    "TargetSizeEncoder.encodeToTarget_jpeg_200KB": {
+      "median_ns": null,
+      "median_alloc_count": null,
+      "median_attempts": null
+    }
   },
   "macrobenchmarks": {
-    "Startup.coldStart": { "median_ms": null, "p95_ms": null },
-    "Startup.warmStart": { "median_ms": null, "p95_ms": null },
-    "PickerToPreview.tapToPicker": { "median_ms": null, "p95_ms": null },
-    "PresetSwitch.tapToSelected": { "median_ms": null, "p95_ms": null },
-    "ShareIntentToSharesheet.intentToChooser": { "median_ms": null, "p95_ms": null }
+    "Startup.coldStart": {
+      "median_ms": null,
+      "p95_ms": null
+    },
+    "Startup.warmStart": {
+      "median_ms": null,
+      "p95_ms": null
+    },
+    "PickerToPreview.tapToPicker": {
+      "median_ms": null,
+      "p95_ms": null
+    },
+    "PresetSwitch.tapToSelected": {
+      "median_ms": null,
+      "p95_ms": null
+    },
+    "ShareIntentToSharesheet.intentToChooser": {
+      "median_ms": null,
+      "p95_ms": null
+    },
+    "BatchProcessingJourney.shareIntentToBatchToNotification": {
+      "median_ms": null,
+      "p95_ms": null
+    },
+    "SafToRecentsRender.openDocumentToRecentsRender": {
+      "median_ms": null,
+      "p95_ms": null
+    }
   }
 }

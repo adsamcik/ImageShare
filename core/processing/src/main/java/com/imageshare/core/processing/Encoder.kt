@@ -2,7 +2,7 @@ package com.imageshare.core.processing
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
-import android.graphics.Color
+import android.graphics.Canvas
 import android.os.Build
 import androidx.heifwriter.HeifWriter
 import java.io.ByteArrayOutputStream
@@ -130,22 +130,12 @@ class Encoder {
 
     private fun Bitmap.flattenAlpha(backgroundArgb: Int): Bitmap {
         val flattened = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                flattened.setPixel(x, y, getPixel(x, y).over(backgroundArgb))
-            }
+        Canvas(flattened).run {
+            drawColor(backgroundArgb)
+            drawBitmap(this@flattenAlpha, 0f, 0f, null)
         }
         flattened.setHasAlpha(false)
         return flattened
-    }
-
-    private fun Int.over(backgroundArgb: Int): Int {
-        val alpha = Color.alpha(this)
-        val inverseAlpha = MAX_ALPHA - alpha
-        val red = (Color.red(this) * alpha + Color.red(backgroundArgb) * inverseAlpha) / MAX_ALPHA
-        val green = (Color.green(this) * alpha + Color.green(backgroundArgb) * inverseAlpha) / MAX_ALPHA
-        val blue = (Color.blue(this) * alpha + Color.blue(backgroundArgb) * inverseAlpha) / MAX_ALPHA
-        return Color.rgb(red, green, blue)
     }
 
     private fun EncodeFormat.isLossless(): Boolean =
@@ -174,7 +164,6 @@ class Encoder {
     private companion object {
         private const val MIN_QUALITY = 1
         private const val MAX_QUALITY = 100
-        private const val MAX_ALPHA = 255
         private const val HEIF_STOP_TIMEOUT_MS = 10_000L
         private const val TEMP_FILE_PREFIX = "heif-encode-"
         private const val TEMP_FILE_SUFFIX = ".heic"

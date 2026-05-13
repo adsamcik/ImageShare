@@ -7,6 +7,7 @@ import androidx.work.Data
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.imageshare.app.AppContainer
+import com.imageshare.app.data.BatchManifestDao
 import com.imageshare.app.data.BatchManifestEntity
 import com.imageshare.app.data.ImageShareDatabase
 import com.imageshare.app.processing.BatchOrchestrator
@@ -131,6 +132,27 @@ class BatchProcessWorkerTest {
         assertEquals(BatchProcessWorker.STATE_CANCELLED, rows[2].state)
     }
 
+    @Test
+    fun progressEmissionsCoalescedTo10Hz() = runTest {
+        seedManifest()
+        val countingDao = CountingBatchManifestDao(database.batchManifestDao())
+        AppContainer.overrideForTests(
+            batchManifestDao = countingDao,
+            batchOrchestrator = BatchOrchestrator(
+                FakePipeline(context, progressEmissions = 100),
+                StandardTestDispatcher(testScheduler),
+            ),
+            presetRepository = WorkerPresetRepository,
+        )
+
+        val result = worker().doWork()
+
+        assertEquals(androidx.work.ListenableWorker.Result.success(), result)
+        assertTrue("Expected coalesced DAO updates, got ${countingDao.updateCount}", countingDao.updateCount <= 12)
+        val rows = database.batchManifestDao().forJob(JOB_ID)
+        assertEquals(3, rows.count { it.state == BatchProcessWorker.STATE_DONE })
+    }
+
     private suspend fun seedManifest() {
         database.batchManifestDao().upsert(
             (0 until 3).map { index ->
@@ -163,6 +185,7 @@ class BatchProcessWorkerTest {
 
 private class FakePipeline(
     private val context: Context,
+    private val progressEmissions: Int = 1,
     private val result: suspend (SourceItem, Preset, String) -> PresetPipeline.Result = { source, preset, jobId ->
         success(context, source, preset, jobId)
     },
@@ -173,7 +196,7 @@ private class FakePipeline(
         jobId: String,
         onProgress: (PresetPipeline.Step) -> Unit,
     ): PresetPipeline.Result {
-        onProgress(PresetPipeline.Step.Storing)
+        repeat(progressEmissions) { onProgress(PresetPipeline.Step.Storing) }
         return result(source, preset, jobId)
     }
 }
@@ -201,4 +224,28 @@ private object WorkerPresetRepository : com.imageshare.feature.preset.PresetRepo
     override fun observeDefaultPresetId() = kotlinx.coroutines.flow.flowOf(DefaultPresets.DEFAULT_PRESET_ID)
     override suspend fun setDefaultPresetId(id: String) = Unit
     override suspend fun getPreset(id: String): Preset? = DefaultPresets.ALL.firstOrNull { it.id == id }
+}
+
+private class CountingBatchManifestDao(
+    private val delegate: BatchManifestDao,
+) : BatchManifestDao {
+    var updateCount: Int = 0
+        private set
+
+    override suspend fun forJob(jobId: String): List<BatchManifestEntity> = delegate.forJob(jobId)
+
+    override suspend fun jobIds(): List<String> = delegate.jobIds()
+
+    override suspend fun pendingJobIds(): List<String> = delegate.pendingJobIds()
+
+    override suspend fun upsert(entries: List<BatchManifestEntity>) = delegate.upsert(entries)
+
+    override suspend fun update(entry: BatchManifestEntity) {
+        updateCount += 1
+        delegate.update(entry)
+    }
+
+    override suspend fun deleteJob(jobId: String) = delegate.deleteJob(jobId)
+
+    override suspend fun purgeOlderThan(cutoffMillis: Long): Int = delegate.purgeOlderThan(cutoffMillis)
 }

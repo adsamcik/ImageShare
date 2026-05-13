@@ -23,8 +23,14 @@ import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.io.sourceItemFromPersistedUriString
 import com.imageshare.feature.preset.Preset
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 class BatchProcessWorker(
     appContext: Context,
@@ -57,6 +63,7 @@ class BatchProcessWorker(
         }
     }
 
+    @OptIn(FlowPreview::class)
     private suspend fun runBatch(
         jobId: String,
         remaining: List<BatchManifestEntity>,
@@ -64,15 +71,37 @@ class BatchProcessWorker(
         total: Int,
     ) {
         val sources = remaining.map { sourceItemFromPersistedUriString(it.sourceUriString) }
-        AppContainer.activeBatchOrchestrator.run(jobId, sources, preset).collect { progress ->
-            progress.items.forEachIndexed { index, item ->
-                val updated = remaining[index].withItemState(item.state)
-                if (updated.state != STATE_PENDING) AppContainer.batchManifestDao.update(updated)
-            }
-            val completed = AppContainer.batchManifestDao.forJob(jobId).count { it.state != STATE_PENDING }
-            setProgress(workDataOf(KEY_PROGRESS_COMPLETED to completed, KEY_PROGRESS_TOTAL to total))
-            setForeground(makeForegroundInfo(completed, total))
+        var latestProgress: BatchOrchestrator.BatchProgress? = null
+        var lastAppliedProgress: BatchOrchestrator.BatchProgress? = null
+        try {
+            AppContainer.activeBatchOrchestrator.run(jobId, sources, preset)
+                .buffer(Channel.UNLIMITED)
+                .onEach { latestProgress = it }
+                .sample(PROGRESS_SAMPLE_INTERVAL)
+                .collect { progress ->
+                    applyProgress(jobId, remaining, total, progress)
+                    lastAppliedProgress = progress
+                }
+        } finally {
+            latestProgress
+                ?.takeIf { it != lastAppliedProgress }
+                ?.let { applyProgress(jobId, remaining, total, it) }
         }
+    }
+
+    private suspend fun applyProgress(
+        jobId: String,
+        remaining: List<BatchManifestEntity>,
+        total: Int,
+        progress: BatchOrchestrator.BatchProgress,
+    ) {
+        progress.items.forEachIndexed { index, item ->
+            val updated = remaining[index].withItemState(item.state)
+            if (updated.state != STATE_PENDING) AppContainer.batchManifestDao.update(updated)
+        }
+        val completed = AppContainer.batchManifestDao.forJob(jobId).count { it.state != STATE_PENDING }
+        setProgress(workDataOf(KEY_PROGRESS_COMPLETED to completed, KEY_PROGRESS_TOTAL to total))
+        setForeground(makeForegroundInfo(completed, total))
     }
 
     private suspend fun markPendingCancelled(jobId: String) {
@@ -149,6 +178,7 @@ class BatchProcessWorker(
         const val KEY_PROGRESS_TOTAL = "total"
         const val CHANNEL_ID = "batch_processing"
         const val NOTIFICATION_ID = 1001
+        private val PROGRESS_SAMPLE_INTERVAL = 100.milliseconds
 
         const val STATE_PENDING = "Pending"
         const val STATE_DONE = "Done"

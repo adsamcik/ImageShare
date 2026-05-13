@@ -58,6 +58,14 @@ Every PR runs the unit + lint + detekt + instrumented-compile suite via `.github
 - Commit captured medians to `benchmarks/baseline.json`.
 - Use a Pixel 4a on API 31 as the reference midrange comparison device unless Phase 4 chooses a newer baseline.
 
+### Capture workflow
+1. Connect real Pixel devices that cover the target range: Pixel 4a plus Pixel 8 minimum.
+2. Run `./gradlew :benchmark:micro:connectedReleaseAndroidTest` and `./gradlew :benchmark:macro:connectedBenchmarkAndroidTest`.
+3. Find JSON outputs under `benchmark/micro/build/outputs/connected_android_test_additional_output/.../androidx.benchmark.json` and the matching macro output directory.
+4. Manually copy median values into `benchmarks/baseline.json`; a merge script can be added later if this becomes repetitive.
+5. Commit `benchmarks/baseline.json` with the captured numbers.
+6. Record device profile details in the commit or release notes: model, API level, CPU governor, charging state, and thermal posture. Run on charger to reduce throttling noise.
+
 ### Baseline Profiles
 - Generate committed startup profiles with `./gradlew :app:generateBaselineProfile`; this uses the configured managed Pixel 6 API 31 device. With an already-connected device, `./gradlew :benchmark:macro:connectedBenchmarkAndroidTest` can be used as a fallback.
 - The generated profile is written to `app/src/main/baseline-prof.txt` and is bundled into release artifacts by the AndroidX Baseline Profile plugin.

@@ -2,6 +2,20 @@
 
 This document tracks gate findings from the Phase 3 audit that are deliberately deferred. Each item links to the gate review that surfaced it and indicates the natural home for the fix.
 
+
+## Resolved in v10-perf-polish
+
+- **P1-P1**: `Encoder.flattenAlpha` now flattens through `Canvas.drawColor + drawBitmap`.
+- **P1-P2**: `Decoder` now consolidates bounds, orientation, and alpha probing into a single buffered metadata pass, with documented reset fallback.
+- **P2-P1**: `ComparisonScreen` now remembers Coil `ImageRequest`s across slider recompositions.
+- **P3-P4**: `BatchProcessWorker` now samples progress emissions at 100 ms and applies the final completion emission synchronously.
+- **P3-P2/P3**: Macrobench journeys now cover share-intent batch processing and SAF/recents rendering scaffolds.
+
+## Architecturally-deferred items
+
+- **P1-P3**: `Encoder` ByteArray double-buffer remains deferred. Streaming directly into `MetadataApplier`'s temp file would couple the isolated encoder API to metadata application for a bounded encoded payload allocation that is typically 500 KB-2 MB. Keep the testable ByteArray boundary until real benchmark numbers show this is a measurable bottleneck.
+- **P1-P4**: `MetadataApplier` temp-file roundtrip remains deferred with P1-P3. Without an Encoder-to-file contract, changing only the metadata side adds complexity without removing the final readback needed by current callers. Revisit both together if benchmark capture proves the file roundtrip dominates.
+
 ## Resolved in v10-store-listing
 
 - **P3-S2**: `docs/DATA_SAFETY.md` for Play Console data-safety form. → Addressed by `docs/DATA_SAFETY.md`.
@@ -15,11 +29,6 @@ This document tracks gate findings from the Phase 3 audit that are deliberately 
 - **P2-S1**: `MediaStoreSaver` orphan-row cleanup on copy failure. IS_PENDING rows accumulate if the file copy throws after insert. → v1.0-launch hardening phase.
 
 ### Performance
-- **P1-P1**: `Encoder.flattenAlpha` per-pixel getPixel/setPixel → rewrite as `Canvas.drawColor + drawBitmap`. ~10× speedup expected. Microbenchmark `flattenAlphaThenJpegQ70_1024x768` will quantify. → v1.0 perf-polish phase.
-- **P1-P2**: Decoder makes 3-4 separate `openInputStream` calls per decode (bounds + orientation + alpha + ImageDecoder.createSource). Consolidate into one probe pass. → v1.0 perf-polish phase.
-- **P1-P3**: `Encoder` allocates a full `ByteArrayOutputStream` then `toByteArray()` — 2× peak memory per encode. Stream directly to MetadataApplier's temp file. → v1.0 perf-polish phase.
-- **P1-P4**: `MetadataApplier` temp-file roundtrip — 3 filesystem ops per image. → v1.0 perf-polish phase.
-- **P2-P1**: `ComparisonScreen` ImageRequest not `remember`d — ~120 alloc/sec during drag. Five-line fix. → v1.0 perf-polish phase.
 
 ### Design
 - **P1-D5/P2-D7**: FilterChip overrides built-in selected-state semantics; chip height 32dp < Material 48dp guideline. → v1.0 design-polish phase.
@@ -37,8 +46,6 @@ This document tracks gate findings from the Phase 3 audit that are deliberately 
 - **P3-S8**: `FOREGROUND_SERVICE_TYPE_DATA_SYNC` has 6h/24h budget on API 35+. Consider `FOREGROUND_SERVICE_TYPE_SHORT_SERVICE` for batches <3min. → v1.0-launch hardening phase.
 
 ### Performance
-- **P3-P2/P3**: Missing macrobench journeys for share-intent → background-batch → notification, and SAF → Recents-render. → v1.0 perf-polish phase.
-- **P3-P4**: BatchProcessWorker progress emission cardinality (5N writes per batch). Soft-cap N to 100 or coalesce emissions to ≤1/100ms. → v1.0 perf-polish phase.
 - **P3-P5**: Worker cancellation cleanup needs `withContext(NonCancellable)`. → v1.0-launch hardening phase.
 - **P3-P6**: Benchmark medians not yet captured. Hard prerequisite for v1.0 sign-off. → v1.0-launch phase.
 - **P3-P7**: Re-baseline profile on a wider device matrix before Play submission. → v1.0-launch phase.

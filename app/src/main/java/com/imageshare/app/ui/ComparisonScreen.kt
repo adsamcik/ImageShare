@@ -121,22 +121,28 @@ fun ComparisonScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     val imageModifier = Modifier.fillMaxSize()
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
+                    val beforeRequest = remember(before, context) {
+                        ImageRequest.Builder(context)
                             .data(before)
                             .size(1080, 1080)
                             .precision(Precision.INEXACT)
-                            .build(),
+                            .build()
+                    }
+                    val afterRequest = remember(after, context) {
+                        ImageRequest.Builder(context)
+                            .data(after)
+                            .size(1080, 1080)
+                            .precision(Precision.INEXACT)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = beforeRequest,
                         contentDescription = stringResource(R.string.before_label),
                         contentScale = ContentScale.Fit,
                         modifier = imageModifier,
                     )
                     AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(after)
-                            .size(1080, 1080)
-                            .precision(Precision.INEXACT)
-                            .build(),
+                        model = afterRequest,
                         contentDescription = stringResource(R.string.after_label),
                         contentScale = ContentScale.Fit,
                         modifier = imageModifier.drawWithContent {

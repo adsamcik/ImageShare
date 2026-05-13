@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions", "ReturnCount")
+
 package com.imageshare.core.processing
 
 import android.content.ContentResolver
@@ -7,6 +9,7 @@ import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
+import java.io.BufferedInputStream
 import java.io.FileNotFoundException
 import java.io.IOException
 import kotlin.math.max
@@ -37,14 +40,7 @@ sealed class DecodeError(message: String, cause: Throwable? = null) : Exception(
 
 class Decoder(private val resolver: ContentResolver) {
     fun readMetadata(uri: Uri): SourceMetadata = mapDecodeErrors {
-        val bounds = readBounds(uri)
-        SourceMetadata(
-            width = bounds.width,
-            height = bounds.height,
-            mimeType = bounds.mimeType,
-            orientation = readOrientation(uri),
-            hasAlpha = readHasAlphaHint(uri, bounds.mimeType),
-        )
+        probeSource(uri).toMetadata()
     }
 
     suspend fun decode(
@@ -62,10 +58,8 @@ class Decoder(private val resolver: ContentResolver) {
     ): DecodedImage = mapDecodeErrors {
         require(targetLongEdgePx > 0) { "targetLongEdgePx must be positive" }
 
-        val bounds = readBounds(uri)
-        val orientation = readOrientation(uri)
-        val hadAlpha = readHasAlphaHint(uri, bounds.mimeType)
-        val sampleSize = calculateInSampleSize(bounds.width, bounds.height, targetLongEdgePx)
+        val probe = probeSource(uri)
+        val sampleSize = calculateInSampleSize(probe.width, probe.height, targetLongEdgePx)
         val source = ImageDecoder.createSource(resolver, uri)
         val decoded = ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
             decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE)
@@ -75,68 +69,87 @@ class Decoder(private val resolver: ContentResolver) {
             }
         }
         val scaled = scaleToTarget(decoded, targetLongEdgePx)
-        val oriented = applyOrientation(scaled, orientation)
+        val oriented = applyOrientation(scaled, probe.orientation)
 
         DecodedImage(
             bitmap = oriented,
-            sourceWidth = bounds.width,
-            sourceHeight = bounds.height,
-            hadAlpha = bounds.hasAlphaHint || hadAlpha,
+            sourceWidth = probe.width,
+            sourceHeight = probe.height,
+            hadAlpha = probe.hasAlpha,
         )
     }
 
-    private fun readBounds(uri: Uri): ImageBounds {
-        val options = BitmapFactory.Options().apply {
-            inJustDecodeBounds = true
-        }
+    private fun probeSource(uri: Uri): SourceProbe {
+        val stream = resolver.openInputStream(uri) ?: missingBounds(uri)
+        return stream.use { input ->
+            val buffered = input.bufferedForProbe()
+            buffered.mark(PROBE_MARK_LIMIT_BYTES)
 
-        try {
-            val stream = resolver.openInputStream(uri) ?: return missingBounds(uri)
-            stream.use {
-                BitmapFactory.decodeStream(stream, null, options)
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
             }
-        } catch (error: IOException) {
-            throw DecodeError.IoError(error)
-        } catch (error: SecurityException) {
-            throw DecodeError.IoError(error)
-        }
+            BitmapFactory.decodeStream(buffered, null, options)
+            val bounds = options.toImageBounds()
 
-        return options.toImageBounds()
+            val headerAlpha = readHasAlphaHint(uri, buffered, bounds.mimeType)
+            val orientation = readOrientation(uri, buffered)
+            SourceProbe(
+                width = bounds.width,
+                height = bounds.height,
+                mimeType = bounds.mimeType,
+                orientation = orientation,
+                hasAlpha = bounds.hasAlphaHint || headerAlpha,
+            )
+        }
     }
 
-    private fun missingBounds(uri: Uri): ImageBounds {
+    private fun missingBounds(uri: Uri): Nothing {
         throw DecodeError.IoError(FileNotFoundException(uri.toString()))
     }
 
-    private fun readOrientation(uri: Uri): Int = try {
-        resolver.openInputStream(uri)?.use { stream ->
-            ExifInterface(stream).getAttributeInt(
-                ExifInterface.TAG_ORIENTATION,
-                ExifInterface.ORIENTATION_NORMAL,
-            )
-        } ?: ExifInterface.ORIENTATION_NORMAL
-    } catch (_: IOException) {
-        ExifInterface.ORIENTATION_NORMAL
-    } catch (_: IllegalArgumentException) {
-        ExifInterface.ORIENTATION_NORMAL
-    }
-
-    private fun readHasAlphaHint(uri: Uri, mimeType: String?): Boolean {
-        if (mimeType != "image/png" && mimeType != "image/webp") {
-            return false
+    private fun readOrientation(uri: Uri, buffered: BufferedInputStream): Int {
+        val stream = if (buffered.resetForProbe()) {
+            buffered
+        } else {
+            // Some ContentResolver streams cannot honor mark/reset after BitmapFactory probing.
+            // Fall back to one extra metadata stream rather than failing the decode.
+            resolver.openInputStream(uri) ?: return ExifInterface.ORIENTATION_NORMAL
         }
 
         return try {
-            resolver.openInputStream(uri)?.use { stream ->
+            stream.useIfFallback(buffered) {
+                ExifInterface(it).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL,
+                )
+            }
+        } catch (_: IOException) {
+            ExifInterface.ORIENTATION_NORMAL
+        } catch (_: IllegalArgumentException) {
+            ExifInterface.ORIENTATION_NORMAL
+        }
+    }
+
+    private fun readHasAlphaHint(uri: Uri, buffered: BufferedInputStream, mimeType: String?): Boolean {
+        if (mimeType !in AlphaCapableMimeTypes || mimeType != "image/png") {
+            return false
+        }
+
+        val stream = if (buffered.resetForProbe()) {
+            buffered
+        } else {
+            // Mark/reset is not guaranteed for all resolver streams; reopen only for this fallback.
+            resolver.openInputStream(uri) ?: return false
+        }
+
+        return try {
+            stream.useIfFallback(buffered) {
                 val header = ByteArray(PngHeaderSize)
-                val bytesRead = stream.read(header)
-                when {
-                    bytesRead >= PngHeaderSize && header.isPngHeader() ->
-                        header[PngColorTypeOffset].toInt() in AlphaPngColorTypes
-                    mimeType == "image/webp" -> false
-                    else -> false
-                }
-            } ?: false
+                val bytesRead = it.read(header)
+                bytesRead >= PngHeaderSize &&
+                    header.isPngHeader() &&
+                    header[PngColorTypeOffset].toInt() in AlphaPngColorTypes
+            }
         } catch (_: IOException) {
             false
         } catch (_: SecurityException) {
@@ -144,13 +157,42 @@ class Decoder(private val resolver: ContentResolver) {
         }
     }
 
+    private fun SourceProbe.toMetadata(): SourceMetadata = SourceMetadata(
+        width = width,
+        height = height,
+        mimeType = mimeType,
+        orientation = orientation,
+        hasAlpha = hasAlpha,
+    )
+
+    private fun java.io.InputStream.bufferedForProbe(): BufferedInputStream =
+        this as? BufferedInputStream ?: BufferedInputStream(this)
+
+    private fun BufferedInputStream.resetForProbe(): Boolean = try {
+        reset()
+        true
+    } catch (_: IOException) {
+        false
+    }
+
+    private inline fun <T> java.io.InputStream.useIfFallback(
+        probeStream: BufferedInputStream,
+        block: (java.io.InputStream) -> T,
+    ): T = if (this === probeStream) block(this) else use(block)
+
     private companion object {
+        private const val PROBE_MARK_LIMIT_BYTES = 64 * 1024
         private const val PngHeaderSize = 26
         private const val PngColorTypeOffset = 25
+        private val AlphaCapableMimeTypes = setOf(
+            "image/png",
+            "image/webp",
+            "image/heif",
+            "image/avif",
+        )
         private val AlphaPngColorTypes = setOf(4, 6)
     }
 }
-
 internal fun calculateInSampleSize(sourceWidth: Int, sourceHeight: Int, targetLongEdgePx: Int): Int {
     require(sourceWidth > 0 && sourceHeight > 0) { "source dimensions must be positive" }
     require(targetLongEdgePx > 0) { "targetLongEdgePx must be positive" }
@@ -263,9 +305,18 @@ private val PngSignature = byteArrayOf(
     0x0A.toByte(),
 )
 
+private data class SourceProbe(
+    val width: Int,
+    val height: Int,
+    val mimeType: String?,
+    val orientation: Int,
+    val hasAlpha: Boolean,
+)
+
 private data class ImageBounds(
     val width: Int,
     val height: Int,
     val mimeType: String?,
     val hasAlphaHint: Boolean,
 )
+

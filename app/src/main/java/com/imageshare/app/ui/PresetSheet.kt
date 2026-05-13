@@ -86,6 +86,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
@@ -269,7 +270,11 @@ fun PresetSheet(
     var overflowMenuExpanded by remember { mutableStateOf(false) }
 
     MaterialTheme {
-        Surface(modifier = modifier.fillMaxSize()) {
+        Surface(
+            modifier = modifier
+                .fillMaxSize()
+                .semantics { testTagsAsResourceId = true },
+        ) {
             Scaffold(
                 topBar = {
                     TopAppBar(
@@ -467,7 +472,9 @@ private fun EmptyState(
             Box {
                 OutlinedButton(
                     onClick = onOpenDocuments,
-                    modifier = Modifier.semantics { contentDescription = openDocumentsTooltip },
+                    modifier = Modifier
+                        .testTag("open-documents-button")
+                        .semantics { contentDescription = openDocumentsTooltip },
                 ) {
                     Text(openDocumentsLabel)
                 }
