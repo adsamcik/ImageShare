@@ -137,5 +137,6 @@
     <string name="license_label_epl_1">Eclipse Public License 1.0</string>
     <string name="license_label_mit">MIT License</string>
     <string name="license_label_bsd2">BSD 2-Clause License</string>
+    <string name="license_label_bsd2_aom">BSD 2-Clause + Alliance for Open Media Patent License 1.0</string>
     <string name="license_label_bsd3">BSD 3-Clause License</string>
 </resources>

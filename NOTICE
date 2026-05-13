@@ -51,9 +51,13 @@ Copyright (c) 2019-2026, Alliance for Open Media contributors
 Licensed under the BSD 2-Clause License
 https://github.com/AOMediaCodec/libavif
 
-aom
-Copyright (c) 2016-2026, Alliance for Open Media contributors
-Licensed under the BSD 2-Clause License
+libaom (AV1 reference encoder/decoder)
+Copyright (c) 2016, Alliance for Open Media
+Licensed under the BSD 2-Clause License AND the Alliance for Open Media Patent License 1.0
 https://aomedia.googlesource.com/aom/
+
+This product makes use of libaom for AVIF encode acceleration on devices without
+platform AVIF support. See THIRD_PARTY_LICENSES for the full BSD 2-Clause License
+text and the Alliance for Open Media Patent License 1.0 text.
 
 For the full text of each license, see THIRD_PARTY_LICENSES.

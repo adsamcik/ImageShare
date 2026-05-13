@@ -151,7 +151,7 @@ private val LICENSES = listOf(
     LicenseEntry(
         "aom",
         "Copyright 2016-2026 Alliance for Open Media contributors",
-        R.string.license_label_bsd2,
+        R.string.license_label_bsd2_aom,
         "https://aomedia.googlesource.com/aom/",
     ),
 )
