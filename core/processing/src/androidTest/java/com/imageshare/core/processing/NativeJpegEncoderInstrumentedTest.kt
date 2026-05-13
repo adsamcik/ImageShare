@@ -58,3 +58,4 @@ class NativeJpegEncoderInstrumentedTest {
             }
             setHasAlpha(false)
         }
+}
