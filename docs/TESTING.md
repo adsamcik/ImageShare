@@ -50,3 +50,10 @@ HEIC is deferred to Phase 3: Android framework HEIC encoding is not available ac
 
 ## CI behavior
 Every PR runs the unit + lint + detekt + instrumented-compile suite via `.github/workflows/ci.yml`. Lint and test reports are uploaded as artifacts on failure.
+
+## Benchmarks
+- Microbenchmarks compile in CI and run manually on a connected physical device with `./gradlew :benchmark:micro:connectedReleaseAndroidTest`. Use a real device, not an emulator, for representative decode/resize/encode/metadata numbers.
+- Macrobenchmarks compile in CI and run manually with `./gradlew :benchmark:macro:connectedBenchmarkAndroidTest`. The macro test module targets the app release variant through its `benchmark` build type and signs the test APK with the debug signing config for local installability.
+- Benchmarks do not run in CI because stable numbers require a dedicated real device with low background noise.
+- Commit captured medians to `benchmarks/baseline.json`.
+- Use a Pixel 4a on API 31 as the reference midrange comparison device unless Phase 4 chooses a newer baseline.

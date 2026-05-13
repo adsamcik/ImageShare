@@ -1,0 +1,2 @@
+-keep class * { *; }
+-dontwarn org.junit.**

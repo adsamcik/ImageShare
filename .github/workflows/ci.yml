@@ -47,6 +47,9 @@ jobs:
       - name: Compile instrumented tests
         run: ./gradlew assembleDebugAndroidTest
 
+      - name: Compile benchmarks
+        run: ./gradlew :benchmark:micro:assembleDebugAndroidTest :benchmark:macro:assembleBenchmarkAndroidTest
+
       - name: Run lint
         id: lint
         run: ./gradlew lint
