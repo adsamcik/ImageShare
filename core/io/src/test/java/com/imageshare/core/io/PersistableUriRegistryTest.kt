@@ -6,6 +6,7 @@ import android.content.UriPermission
 import android.net.Uri
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -46,6 +47,7 @@ class PersistableUriRegistryTest {
             listOf(RecentUriEntry(first, "one-updated.jpg"), RecentUriEntry(second, "two.jpg")),
             registry.observe().first(),
         )
+        assertEquals(emptyList<Uri>(), resolver.released)
     }
 
     @Test
@@ -113,6 +115,22 @@ class PersistableUriRegistryTest {
         val registry = PersistableUriRegistry(dataStore, resolver)
 
         assertEquals(listOf(RecentUriEntry(legacyUri, null)), registry.observe().first())
+    }
+
+    @Test
+    fun legacyEntryUpgradePreservesGrant() = runTest {
+        val resolver = FakeContentResolver()
+        val legacyUri = Uri.parse("content://example/legacy.jpg")
+        val dataStore = InMemoryPreferencesDataStore()
+        dataStore.edit { prefs ->
+            prefs[stringPreferencesKey("persisted_uris")] = legacyUri.toString()
+        }
+        val registry = PersistableUriRegistry(dataStore, resolver)
+
+        registry.add(legacyUri, displayName = "legacy.jpg")
+
+        assertEquals(emptyList<Uri>(), resolver.released)
+        assertEquals(listOf(RecentUriEntry(legacyUri, "legacy.jpg")), registry.observe().first())
     }
 
     private fun registry(

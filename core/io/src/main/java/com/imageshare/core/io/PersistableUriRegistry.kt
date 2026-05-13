@@ -58,12 +58,17 @@ class PersistableUriRegistry(
             var dropped: List<Uri> = emptyList()
             dataStore.edit { prefs ->
                 val updatedEntry = RecentUriEntry(uri, displayName).toStoredString()
+                val current = prefs.storedEntries()
                 val updated = (
                     listOf(updatedEntry) +
-                        prefs.storedEntries().filterNot { it.storedUriString() == uri.toString() }
+                        current.filterNot { it.storedUriString() == uri.toString() }
                     ).take(maxEntries)
-                dropped = prefs.storedEntries()
-                    .filterNot { it in updated }
+                val updatedUris = updated.mapNotNull { it.toRecentUriEntryOrNull()?.uri }.toSet()
+                dropped = current
+                    .filterNot { entry ->
+                        val entryUri = entry.toRecentUriEntryOrNull()?.uri
+                        entryUri != null && entryUri in updatedUris
+                    }
                     .mapNotNull { it.toRecentUriEntryOrNull()?.uri }
                 prefs[URI_LIST_KEY] = updated.joinToString(LIST_DELIMITER)
             }

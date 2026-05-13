@@ -512,19 +512,18 @@ private fun RecentUriChip(
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .size(36.dp),
+                .size(48.dp),
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
                 shape = CircleShape,
-                modifier = Modifier.matchParentSize(),
+                modifier = Modifier
+                    .size(36.dp)
+                    .align(Alignment.Center),
             ) {}
             IconButton(
                 onClick = onRemoved,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(48.dp)
-                    .semantics { contentDescription = removeDescription },
+                modifier = Modifier.matchParentSize(),
             ) {
                 Icon(
                     Icons.Filled.Close,
