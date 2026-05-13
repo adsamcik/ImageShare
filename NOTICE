@@ -1,0 +1,41 @@
+ImageShare
+Copyright 2026 ImageShare contributors
+
+This product includes software developed by the following projects:
+
+AndroidX
+Copyright (c) 2018-2026 The Android Open Source Project
+Licensed under the Apache License, Version 2.0
+https://developer.android.com/jetpack/androidx
+
+Material Components for Android
+Copyright (c) 2018-2026 The Android Open Source Project
+Licensed under the Apache License, Version 2.0
+https://github.com/material-components/material-components-android
+
+Coil
+Copyright (c) 2019-2026 Coil Contributors
+Licensed under the Apache License, Version 2.0
+https://github.com/coil-kt/coil
+
+Kotlin
+Copyright (c) 2010-2026 JetBrains s.r.o. and Kotlin Programming Language contributors
+Licensed under the Apache License, Version 2.0
+https://github.com/JetBrains/kotlin
+
+kotlinx.coroutines
+Copyright (c) 2016-2026 JetBrains s.r.o. and contributors
+Licensed under the Apache License, Version 2.0
+https://github.com/Kotlin/kotlinx.coroutines
+
+JUnit 4
+Copyright (c) 2002-2026 JUnit
+Licensed under the Eclipse Public License 1.0
+https://junit.org/junit4/
+
+Robolectric
+Copyright (c) 2010-2026 Robolectric contributors
+Licensed under the MIT License
+https://robolectric.org/
+
+For the full text of each license, see THIRD_PARTY_LICENSES.

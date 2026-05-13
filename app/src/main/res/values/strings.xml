@@ -123,4 +123,11 @@
     <string name="batch_channel_description">Progress for image processing batches.</string>
     <string name="batch_notification_title">Processing images</string>
     <string name="batch_notification_text">Processed %1$d of %2$d images</string>
+    <string name="licenses_screen_title">Open-source licenses</string>
+    <string name="licenses_back_a11y">Back</string>
+    <string name="licenses_overflow_menu_a11y">More options</string>
+    <string name="licenses_view_source_a11y">View %1$s source</string>
+    <string name="license_label_apache_2">Apache License 2.0</string>
+    <string name="license_label_epl_1">Eclipse Public License 1.0</string>
+    <string name="license_label_mit">MIT License</string>
 </resources>

@@ -2,6 +2,11 @@
 
 This document tracks gate findings from the Phase 3 audit that are deliberately deferred. Each item links to the gate review that surfaced it and indicates the natural home for the fix.
 
+## Resolved in v10-store-listing
+
+- **P3-S2**: `docs/DATA_SAFETY.md` for Play Console data-safety form. → Addressed by `docs/DATA_SAFETY.md`.
+- **P3-S3**: `LICENSE` + `NOTICE` + in-app OSS attribution screen. → Addressed by root `LICENSE`, `NOTICE`, `THIRD_PARTY_LICENSES`, and the in-app "Open-source licenses" screen.
+
 ## Carryover from Phase 1+2 (still unaddressed)
 
 ### Security
@@ -28,8 +33,6 @@ This document tracks gate findings from the Phase 3 audit that are deliberately 
 
 ### Security
 - **P3-S1**: `android:allowBackup` posture + dataExtractionRules. Phase 3's new state (DataStore URI registry + Room manifest) is currently auto-backed-up to Google Drive. Either declare exclusion rules or set `allowBackup="false"`. → v1.0-launch hardening phase.
-- **P3-S2**: `docs/DATA_SAFETY.md` for Play Console data-safety form. → v1.0-launch phase.
-- **P3-S3**: `LICENSE` + `NOTICE` + in-app OSS attribution screen. → v1.0-launch phase.
 - **P3-S4**: `BatchProcessWorker.errorMessage` persists arbitrary Throwable messages (may leak other-app content paths). Map to a small enum of error codes. → v1.0-launch hardening phase.
 - **P3-S8**: `FOREGROUND_SERVICE_TYPE_DATA_SYNC` has 6h/24h budget on API 35+. Consider `FOREGROUND_SERVICE_TYPE_SHORT_SERVICE` for batches <3min. → v1.0-launch hardening phase.
 

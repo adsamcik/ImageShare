@@ -38,10 +38,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -65,8 +68,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -117,6 +122,7 @@ fun MainScreen(viewModel: MainViewModel) {
     val runInBackground by viewModel.runInBackground.collectAsState()
     val recentsUris by viewModel.recentsUris.collectAsState()
     val shownComparison by viewModel.shownComparison.collectAsState()
+    var showLicenses by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val picker = rememberPhotoPickerLauncher(
         onResult = viewModel::onPickerResult,
@@ -189,34 +195,39 @@ fun MainScreen(viewModel: MainViewModel) {
         )
     }
 
-    PresetSheet(
-        sources = sources,
-        presets = presets,
-        selectedPreset = selectedPreset,
-        effectivePreset = effectivePreset,
-        customOverride = customOverride,
-        onCustomOverride = viewModel::onCustomOverride,
-        runInBackground = runInBackground,
-        onRunInBackgroundChanged = viewModel::onRunInBackgroundChanged,
-        processingState = processingState,
-        shownComparison = shownComparison,
-        onPresetSelected = viewModel::onPresetSelected,
-        onPickFromGallery = {
-            viewModel.onPickFromGallery()
-            picker.launchMultiple()
-        },
-        onOpenDocuments = { safLauncher.launchMultiple() },
-        recentsUris = recentsUris,
-        onRecentSelected = viewModel::onRecentSelected,
-        onRecentRemoved = viewModel::onRecentRemoved,
-        onProcessAndShare = viewModel::onProcessAndShare,
-        onCancelBatch = viewModel::onCancelBatch,
-        onSaveCopy = viewModel::onSaveCopy,
-        onExpandResult = viewModel::onExpandResult,
-        onCloseComparison = viewModel::onCloseComparison,
-        onAlphaConflictStrategy = viewModel::resolveAlphaConflicts,
-        snackbarHostState = snackbarHostState,
-    )
+    if (showLicenses) {
+        LicensesScreen(onBack = { showLicenses = false })
+    } else {
+        PresetSheet(
+            sources = sources,
+            presets = presets,
+            selectedPreset = selectedPreset,
+            effectivePreset = effectivePreset,
+            customOverride = customOverride,
+            onCustomOverride = viewModel::onCustomOverride,
+            runInBackground = runInBackground,
+            onRunInBackgroundChanged = viewModel::onRunInBackgroundChanged,
+            processingState = processingState,
+            shownComparison = shownComparison,
+            onPresetSelected = viewModel::onPresetSelected,
+            onPickFromGallery = {
+                viewModel.onPickFromGallery()
+                picker.launchMultiple()
+            },
+            onOpenDocuments = { safLauncher.launchMultiple() },
+            recentsUris = recentsUris,
+            onRecentSelected = viewModel::onRecentSelected,
+            onRecentRemoved = viewModel::onRecentRemoved,
+            onProcessAndShare = viewModel::onProcessAndShare,
+            onCancelBatch = viewModel::onCancelBatch,
+            onSaveCopy = viewModel::onSaveCopy,
+            onExpandResult = viewModel::onExpandResult,
+            onCloseComparison = viewModel::onCloseComparison,
+            onAlphaConflictStrategy = viewModel::resolveAlphaConflicts,
+            onOpenLicenses = { showLicenses = true },
+            snackbarHostState = snackbarHostState,
+        )
+    }
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -243,6 +254,7 @@ fun PresetSheet(
     onExpandResult: (PresetPipeline.Result.Success) -> Unit = {},
     onCloseComparison: () -> Unit = {},
     onAlphaConflictStrategy: (AlphaConflictStrategy) -> Unit,
+    onOpenLicenses: () -> Unit = {},
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
@@ -254,11 +266,36 @@ fun PresetSheet(
         !customOverride.allowUpscale &&
         sources.any { source -> wouldUpscale(source, customOverride.resize) }
     val coroutineScope = rememberCoroutineScope()
+    var overflowMenuExpanded by remember { mutableStateOf(false) }
 
     MaterialTheme {
         Surface(modifier = modifier.fillMaxSize()) {
             Scaffold(
-                topBar = { TopAppBar(title = { Text(stringResource(R.string.top_bar_title)) }) },
+                topBar = {
+                    TopAppBar(
+                        title = { Text(stringResource(R.string.top_bar_title)) },
+                        actions = {
+                            IconButton(onClick = { overflowMenuExpanded = true }) {
+                                Icon(
+                                    Icons.Filled.MoreVert,
+                                    contentDescription = stringResource(R.string.licenses_overflow_menu_a11y),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = overflowMenuExpanded,
+                                onDismissRequest = { overflowMenuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.licenses_screen_title)) },
+                                    onClick = {
+                                        overflowMenuExpanded = false
+                                        onOpenLicenses()
+                                    },
+                                )
+                            }
+                        },
+                    )
+                },
                 snackbarHost = { SnackbarHost(snackbarHostState) },
                 bottomBar = {
                     Surface(

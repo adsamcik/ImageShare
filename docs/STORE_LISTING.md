@@ -6,26 +6,29 @@
 - **Category**: Tools (primary) / Photography (secondary)
 
 ## Long description (max 4000 chars)
-ImageShare is a fast, privacy-first image preparation utility for Android. Process images locally on your device — no cloud, no analytics, no broad media permissions.
+ImageShare is a fast, privacy-first utility for preparing images before you send them. Resize, convert, strip metadata, then share — all on your Android device, with no accounts, no ads, no analytics, and no cloud upload.
 
 ### Features
-- **Quick presets**: Small file, Best quality, Social upload, Email, Custom.
-- **Privacy-first**: Strips GPS, camera serial numbers, and other EXIF metadata by default. Photos you share don't carry your location.
-- **One-tap workflow**: Share from any app → pick a preset → tap "Process & share". The Sharesheet opens automatically.
-- **Batch processing**: Process up to 100 images at once. Runs in the background with a progress notification.
-- **Smart sizing**: Long-edge, exact dimensions, percentage, or target file size (best effort).
-- **Modern formats**: JPEG, PNG, WebP — and HEIF on supported devices.
-- **No ads. No tracking. No accounts.**
+- **Quick presets** for small files, best quality, social uploads, email, and custom dimensions.
+- **Private by default**: strips GPS, camera serial numbers, maker notes, and other EXIF metadata unless you choose otherwise.
+- **One-tap share flow**: share from any app, pick a preset, process, and return straight to Android's Sharesheet.
+- **Batch processing** for up to 100 images, with quiet progress notifications when you background the app.
+- **Flexible sizing** by long edge, exact dimensions, percentage, original size, or target file size.
+- **Modern formats**: JPEG, PNG, WebP, and HEIF on supported devices.
 
-### Permissions
-ImageShare requests only the permissions it needs to process images in the background and notify you when batches finish. It never accesses your photo library directly — Android's photo picker shows you which images to share.
+ImageShare never asks for broad photo-library access and has no INTERNET permission. Your originals stay where they are; processed copies are kept only in app-private cache until you save or share them.
 
 ## Feature graphic spec
-1024 × 500 px; landscape; should depict the share-and-shrink loop. Reference design in `docs/screenshots/feature_graphic_brief.md` (to be authored).
+1024 × 500 px; landscape; should depict the share-and-shrink loop. Reference design: `docs/screenshots/feature_graphic_brief.md`.
 
 ## Screenshots (REQUIRED)
 - Minimum 2 phone screenshots at 1080×1920+ portrait.
-- Recommended: preset sheet, batch progress, before/after card, comparison view.
+- Recommended captures:
+  1. Empty state with Recents visible after a file has been opened.
+  2. Preset selection sheet with privacy/metadata options visible.
+  3. Batch progress with foreground notification context.
+  4. Before/after result card showing file-size reduction.
+  5. Comparison view with draggable before/after split.
 - Tablet screenshots optional but recommended for Tablet feature graphic.
 - Drop captures into `docs/screenshots/phone/` and `docs/screenshots/tablet/`.
 
@@ -36,20 +39,23 @@ ImageShare requests only the permissions it needs to process images in the backg
 - **Profanity**: none
 - **Controlled substances**: none
 - **Gambling**: none
-- **User-generated content**: no (processed locally, never uploaded)
+- **User-generated content**: no (images are user-selected, processed locally, and never uploaded or published by the app)
 - **Personal information collection**: no
+- **Location sharing**: no
+- **Digital purchases**: no
 - **Suggested IARC rating**: Everyone / 3+
 
 ## Pricing & availability
-- **Free** (Phase 1 launch). Pro one-time-purchase unlock deferred to a later release.
+- **Free, no in-app purchases in v1.0**.
 - **Availability**: all countries except those under sanctions.
 - **Device support**: Android 10 (API 29) and above; all 64-bit and 32-bit devices.
 
 ## Privacy policy
-See `docs/PRIVACY_POLICY.md` (to be authored — must be hosted at a public URL before submission).
+- **Hosted URL for Play Console**: `<TBD: hosted-URL-for-PRIVACY_POLICY.md>`
+- Source copy: `docs/PRIVACY_POLICY.md`
 
 ## Data safety
-See `docs/DATA_SAFETY.md` (to be authored).
+See `docs/DATA_SAFETY.md`.
 
 ## Open-source attribution
-See `NOTICE` and the in-app "Open-source licenses" screen.
+See `NOTICE`, `THIRD_PARTY_LICENSES`, and the in-app "Open-source licenses" screen.
