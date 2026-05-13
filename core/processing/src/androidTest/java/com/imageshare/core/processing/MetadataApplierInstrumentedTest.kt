@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertNull
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -42,6 +43,39 @@ class MetadataApplierInstrumentedTest {
         }
     }
 
+    @Test
+    fun heifStripAllRemovesPrivacySensitiveTags() = runBlocking {
+        assumeTrue("HEIF encoder unavailable", HeifAvailability.isWriteSupported())
+
+        val encoded = Encoder().encode(
+            bitmap = photoLikeBitmap(width = 1024, height = 768),
+            format = EncodeFormat.HEIF,
+            quality = 80,
+            alphaPolicy = AlphaPolicy.FillBackground(Color.WHITE),
+        )
+        val withExif = injectPrivacySensitiveExif(encoded.bytes, "metadata-input.heic")
+
+        val stripped = applier.apply(
+            encoded = withExif,
+            format = EncodeFormat.HEIF,
+            mode = MetadataMode.StripAll,
+            source = MetadataSource(originalBytes = withExif, originalUri = null),
+        )
+
+        val tempFile = createTempHeifFile(stripped)
+        try {
+            val exif = ExifInterface(tempFile.absolutePath)
+            PRIVACY_TAGS.forEach { tag ->
+                assertNull(
+                    "Expected $tag stripped from HEIF output but found ${exif.getAttribute(tag)}",
+                    exif.getAttribute(tag),
+                )
+            }
+        } finally {
+            tempFile.delete()
+        }
+    }
+
     private fun imageWithExif(
         name: String,
         format: Bitmap.CompressFormat,
@@ -50,6 +84,22 @@ class MetadataApplierInstrumentedTest {
     ): ByteArray {
         val file = File(context.cacheDir, name)
         file.writeBytes(bitmapBytes(format, width, height))
+        writePrivacySensitiveExif(file)
+        return file.readBytes()
+    }
+
+    private fun injectPrivacySensitiveExif(bytes: ByteArray, name: String): ByteArray {
+        val file = File(context.cacheDir, name)
+        return try {
+            file.writeBytes(bytes)
+            writePrivacySensitiveExif(file)
+            file.readBytes()
+        } finally {
+            file.delete()
+        }
+    }
+
+    private fun writePrivacySensitiveExif(file: File) {
         ExifInterface(file).apply {
             setAttribute(ExifInterface.TAG_GPS_LATITUDE, "12/1,20/1,42000/1000")
             setAttribute(ExifInterface.TAG_GPS_LONGITUDE, "67/1,53/1,24000/1000")
@@ -64,7 +114,6 @@ class MetadataApplierInstrumentedTest {
             setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_ROTATE_90.toString())
             saveAttributes()
         }
-        return file.readBytes()
     }
 
     private fun bitmapBytes(format: Bitmap.CompressFormat, width: Int, height: Int): ByteArray {
@@ -78,8 +127,26 @@ class MetadataApplierInstrumentedTest {
         return output.toByteArray()
     }
 
+    private fun photoLikeBitmap(width: Int, height: Int): Bitmap =
+        Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    val noise = (x * 37 + y * 91 + x * y) and 0xFF
+                    setPixel(
+                        x,
+                        y,
+                        Color.rgb((x * 255 / width) xor noise, (y * 255 / height) xor noise, noise),
+                    )
+                }
+            }
+            setHasAlpha(false)
+        }
+
     private fun exifFromBytes(bytes: ByteArray, name: String): ExifInterface =
         ExifInterface(File(context.cacheDir, name).apply { writeBytes(bytes) })
+
+    private fun createTempHeifFile(bytes: ByteArray): File =
+        File(context.cacheDir, "metadata-output.heic").apply { writeBytes(bytes) }
 
     private companion object {
         private val PRIVACY_TAGS = listOf(

@@ -71,34 +71,36 @@ class Encoder {
             throw EncodeError.HeifUnavailable()
         }
 
-        val outputFile = createHeifTempFile()
-        var writer: HeifWriter? = null
         try {
-            writer = HeifWriter.Builder(
-                outputFile.absolutePath,
-                bitmapToEncode.width,
-                bitmapToEncode.height,
-                HeifWriter.INPUT_MODE_BITMAP,
-            ).setQuality(quality).build()
-            writer.start()
-            writer.addBitmap(bitmapToEncode)
-            writer.stop(HEIF_STOP_TIMEOUT_MS)
-
-            return EncodeResult(
-                bytes = outputFile.readBytes(),
-                width = bitmapToEncode.width,
-                height = bitmapToEncode.height,
-                format = EncodeFormat.HEIF,
-                quality = quality,
-            )
-        } finally {
+            val outputFile = createHeifTempFile()
+            var writer: HeifWriter? = null
             try {
-                writer?.close()
+                writer = HeifWriter.Builder(
+                    outputFile.absolutePath,
+                    bitmapToEncode.width,
+                    bitmapToEncode.height,
+                    HeifWriter.INPUT_MODE_BITMAP,
+                ).setQuality(quality).build()
+                writer.start()
+                writer.addBitmap(bitmapToEncode)
+                writer.stop(HEIF_STOP_TIMEOUT_MS)
+                writer.close()
+                writer = null
+
+                return EncodeResult(
+                    bytes = outputFile.readBytes(),
+                    width = bitmapToEncode.width,
+                    height = bitmapToEncode.height,
+                    format = EncodeFormat.HEIF,
+                    quality = quality,
+                )
             } finally {
-                if (bitmapToEncode !== originalBitmap) {
-                    bitmapToEncode.recycle()
-                }
-                outputFile.delete()
+                runCatching { writer?.close() }
+                runCatching { outputFile.delete() }
+            }
+        } finally {
+            if (bitmapToEncode !== originalBitmap) {
+                bitmapToEncode.recycle()
             }
         }
     }
@@ -173,7 +175,7 @@ class Encoder {
         private const val MIN_QUALITY = 1
         private const val MAX_QUALITY = 100
         private const val MAX_ALPHA = 255
-        private const val HEIF_STOP_TIMEOUT_MS = 0L
+        private const val HEIF_STOP_TIMEOUT_MS = 10_000L
         private const val TEMP_FILE_PREFIX = "heif-encode-"
         private const val TEMP_FILE_SUFFIX = ".heic"
     }
