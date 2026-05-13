@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Build
+import androidx.heifwriter.AvifWriter
 import androidx.heifwriter.HeifWriter
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -12,19 +13,21 @@ import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+@Suppress("TooManyFunctions")
 class Encoder {
     suspend fun encode(
         bitmap: Bitmap,
         format: EncodeFormat,
         quality: Int,
         alphaPolicy: AlphaPolicy,
+        enableAvifBeta: Boolean = false,
     ): EncodeResult = withContext(Dispatchers.IO) {
         if (quality !in MIN_QUALITY..MAX_QUALITY) {
             throw EncodeError.Invalid("quality out of range")
         }
 
         try {
-            encodeBlocking(bitmap, format, quality, alphaPolicy)
+            encodeBlocking(bitmap, format, quality, alphaPolicy, enableAvifBeta)
         } catch (error: IOException) {
             throw EncodeError.IoError(error)
         }
@@ -35,36 +38,98 @@ class Encoder {
         format: EncodeFormat,
         quality: Int,
         alphaPolicy: AlphaPolicy,
+        enableAvifBeta: Boolean,
     ): EncodeResult {
-        val bitmapToEncode = bitmap.prepareForEncoding(format, alphaPolicy)
+        val preparedBitmap = bitmap.prepareForEncoding(format, alphaPolicy)
         val effectiveQuality = if (format.isLossless()) MAX_QUALITY else quality
-        if (format == EncodeFormat.HEIF) {
-            return encodeHeif(bitmap, bitmapToEncode, effectiveQuality)
+        return when (format) {
+            EncodeFormat.HEIF -> encodeHeif(bitmap, preparedBitmap, effectiveQuality)
+            EncodeFormat.AVIF -> encodeAvif(bitmap, preparedBitmap, effectiveQuality, enableAvifBeta)
+            EncodeFormat.JPEG,
+            EncodeFormat.PNG,
+            EncodeFormat.WEBP_LOSSY,
+            EncodeFormat.WEBP_LOSSLESS,
+            -> encodeWithBitmapCompress(bitmap, preparedBitmap, format, effectiveQuality)
         }
-        val output = ByteArrayOutputStream()
+    }
 
+    private fun encodeWithBitmapCompress(
+        originalBitmap: Bitmap,
+        bitmapToEncode: Bitmap,
+        format: EncodeFormat,
+        quality: Int,
+    ): EncodeResult {
+        val output = ByteArrayOutputStream()
         try {
             val encoded = if (format == EncodeFormat.JPEG) {
-                NativeJpegEncoder.encode(bitmapToEncode, effectiveQuality) ?: encodeWithPlatform(
-                    bitmapToEncode,
-                    format,
-                    effectiveQuality,
-                    output,
-                )
+                NativeJpegEncoder.encode(bitmapToEncode, quality)
+                    ?: encodeWithPlatform(bitmapToEncode, format, quality, output)
             } else {
-                encodeWithPlatform(bitmapToEncode, format, effectiveQuality, output)
+                encodeWithPlatform(bitmapToEncode, format, quality, output)
             }
-            return EncodeResult(
-                bytes = encoded,
-                width = bitmapToEncode.width,
-                height = bitmapToEncode.height,
-                format = format,
-                quality = effectiveQuality,
-            )
+            return EncodeResult(encoded, bitmapToEncode.width, bitmapToEncode.height, format, quality)
         } finally {
-            if (bitmapToEncode !== bitmap) {
-                bitmapToEncode.recycle()
+            recycleIfNeeded(bitmapToEncode, originalBitmap)
+        }
+    }
+
+    @SuppressLint("RestrictedApi")
+    private fun encodeAvif(
+        originalBitmap: Bitmap,
+        bitmapToEncode: Bitmap,
+        quality: Int,
+        enableAvifBeta: Boolean,
+    ): EncodeResult {
+        if (!AvifAvailability.isPlatformWriteSupported()) {
+            if (enableAvifBeta && NativeAvifEncoder.isAvailable()) {
+                NativeAvifEncoder.encode(bitmapToEncode, quality)?.let { encoded ->
+                    val width = bitmapToEncode.width
+                    val height = bitmapToEncode.height
+                    recycleIfNeeded(bitmapToEncode, originalBitmap)
+                    return EncodeResult(
+                        bytes = encoded,
+                        width = width,
+                        height = height,
+                        format = EncodeFormat.AVIF,
+                        quality = quality,
+                    )
+                }
+                recycleIfNeeded(bitmapToEncode, originalBitmap)
+                throw EncodeError.AvifUnavailable("Native AVIF encode failed")
             }
+            recycleIfNeeded(bitmapToEncode, originalBitmap)
+            throw EncodeError.AvifUnavailable("No AVIF encoder available on this device")
+        }
+
+        try {
+            val outputFile = createAvifTempFile()
+            var writer: AvifWriter? = null
+            try {
+                writer = AvifWriter.Builder(
+                    outputFile.absolutePath,
+                    bitmapToEncode.width,
+                    bitmapToEncode.height,
+                    AvifWriter.INPUT_MODE_BITMAP,
+                ).setQuality(quality).build()
+                writer.start()
+                writer.addBitmap(bitmapToEncode)
+                writer.stop(AVIF_STOP_TIMEOUT_MS)
+                writer.close()
+                writer = null
+
+                return EncodeResult(
+                    bytes = outputFile.readBytes(),
+                    width = bitmapToEncode.width,
+                    height = bitmapToEncode.height,
+                    format = EncodeFormat.AVIF,
+                    quality = quality,
+                )
+            } finally {
+                runCatching { writer?.close() }
+                runCatching { outputFile.delete() }
+            }
+        } finally {
+            recycleIfNeeded(bitmapToEncode, originalBitmap)
         }
     }
 
@@ -105,32 +170,38 @@ class Encoder {
                 runCatching { outputFile.delete() }
             }
         } finally {
-            if (bitmapToEncode !== originalBitmap) {
-                bitmapToEncode.recycle()
-            }
+            recycleIfNeeded(bitmapToEncode, originalBitmap)
         }
     }
 
     private fun Bitmap.prepareForEncoding(format: EncodeFormat, alphaPolicy: AlphaPolicy): Bitmap {
-        if (!hasAlpha() || (format != EncodeFormat.JPEG && format != EncodeFormat.HEIF)) {
+        val enforcesAlphaPolicy = format == EncodeFormat.JPEG ||
+            format == EncodeFormat.HEIF ||
+            format == EncodeFormat.AVIF
+        if (!hasAlpha() || !enforcesAlphaPolicy) {
             return this
         }
 
         val alphaFormatName = when (format) {
             EncodeFormat.JPEG -> "JPEG"
             EncodeFormat.HEIF -> "HEIF"
+            EncodeFormat.AVIF -> "AVIF"
             EncodeFormat.PNG,
             EncodeFormat.WEBP_LOSSY,
             EncodeFormat.WEBP_LOSSLESS,
-            -> error("Alpha policy is only enforced for JPEG and HEIF")
+            -> error("Alpha policy is only enforced for JPEG, HEIF, and AVIF")
         }
 
         return when (alphaPolicy) {
             AlphaPolicy.Error -> throw EncodeError.AlphaConflict(format)
             is AlphaPolicy.FillBackground -> flattenAlpha(alphaPolicy.argb)
-            AlphaPolicy.Allow -> throw EncodeError.Invalid(
-                "alpha not allowed for $alphaFormatName; choose FillBackground or different format",
-            )
+            AlphaPolicy.Allow -> if (format == EncodeFormat.AVIF) {
+                this
+            } else {
+                throw EncodeError.Invalid(
+                    "alpha not allowed for $alphaFormatName; choose FillBackground or different format",
+                )
+            }
         }
     }
 
@@ -142,6 +213,12 @@ class Encoder {
         }
         flattened.setHasAlpha(false)
         return flattened
+    }
+
+    private fun recycleIfNeeded(bitmap: Bitmap, originalBitmap: Bitmap) {
+        if (bitmap !== originalBitmap) {
+            bitmap.recycle()
+        }
     }
 
     private fun EncodeFormat.isLossless(): Boolean =
@@ -162,10 +239,14 @@ class Encoder {
             Bitmap.CompressFormat.WEBP
         }
         EncodeFormat.HEIF -> throw EncodeError.Invalid("HEIF requires HeifWriter")
+        EncodeFormat.AVIF -> throw EncodeError.Invalid("AVIF requires AvifWriter or native libavif")
     }
 
     private fun createHeifTempFile(): File =
         Files.createTempFile(TEMP_FILE_PREFIX, TEMP_FILE_SUFFIX).toFile()
+
+    private fun createAvifTempFile(): File =
+        Files.createTempFile(AVIF_TEMP_FILE_PREFIX, AVIF_TEMP_FILE_SUFFIX).toFile()
 
     private fun encodeWithPlatform(
         bitmap: Bitmap,
@@ -184,7 +265,10 @@ class Encoder {
         private const val MIN_QUALITY = 1
         private const val MAX_QUALITY = 100
         private const val HEIF_STOP_TIMEOUT_MS = 10_000L
+        private const val AVIF_STOP_TIMEOUT_MS = 10_000L
         private const val TEMP_FILE_PREFIX = "heif-encode-"
         private const val TEMP_FILE_SUFFIX = ".heic"
+        private const val AVIF_TEMP_FILE_PREFIX = "avif-encode-"
+        private const val AVIF_TEMP_FILE_SUFFIX = ".avif"
     }
 }

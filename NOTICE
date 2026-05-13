@@ -46,4 +46,14 @@ https://github.com/libjpeg-turbo/libjpeg-turbo
 
 This product makes use of code derived from the IJG JPEG library.
 
+libavif
+Copyright (c) 2019-2026, Alliance for Open Media contributors
+Licensed under the BSD 2-Clause License
+https://github.com/AOMediaCodec/libavif
+
+aom
+Copyright (c) 2016-2026, Alliance for Open Media contributors
+Licensed under the BSD 2-Clause License
+https://aomedia.googlesource.com/aom/
+
 For the full text of each license, see THIRD_PARTY_LICENSES.

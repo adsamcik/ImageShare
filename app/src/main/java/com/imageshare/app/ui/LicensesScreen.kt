@@ -142,4 +142,16 @@ private val LICENSES = listOf(
         R.string.license_label_bsd3,
         "https://github.com/libjpeg-turbo/libjpeg-turbo",
     ),
+    LicenseEntry(
+        "libavif",
+        "Copyright 2019-2026 Alliance for Open Media contributors",
+        R.string.license_label_bsd2,
+        "https://github.com/AOMediaCodec/libavif",
+    ),
+    LicenseEntry(
+        "aom",
+        "Copyright 2016-2026 Alliance for Open Media contributors",
+        R.string.license_label_bsd2,
+        "https://aomedia.googlesource.com/aom/",
+    ),
 )

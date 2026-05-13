@@ -64,11 +64,13 @@
     <string name="output_format_webp_lossy">WebP (lossy)</string>
     <string name="output_format_webp_lossless">WebP (lossless)</string>
     <string name="output_format_heif">HEIF</string>
+    <string name="output_format_avif">AVIF</string>
     <string name="output_format_jpeg_accessible">J P E G</string>
     <string name="output_format_png_accessible">P N G</string>
     <string name="output_format_webp_lossy_accessible">WebP lossy</string>
     <string name="output_format_webp_lossless_accessible">WebP lossless</string>
     <string name="output_format_heif_accessible">H E I F</string>
+    <string name="output_format_avif_accessible">A V I F</string>
     <string name="alpha_conflict_title">Transparency detected</string>
     <string name="alpha_use_white">Use white background</string>
     <string name="alpha_switch_png">Switch to PNG for those</string>
@@ -134,5 +136,6 @@
     <string name="license_label_apache_2">Apache License 2.0</string>
     <string name="license_label_epl_1">Eclipse Public License 1.0</string>
     <string name="license_label_mit">MIT License</string>
+    <string name="license_label_bsd2">BSD 2-Clause License</string>
     <string name="license_label_bsd3">BSD 3-Clause License</string>
 </resources>

@@ -6,7 +6,10 @@ plugins {
 val skipNativeJpegBuild = providers.gradleProperty("imageshare.skipNativeJpegBuild")
     .map(String::toBoolean)
     .getOrElse(false)
-val configureNativeJpegBuild = !skipNativeJpegBuild && gradle.startParameter.taskNames.let { requestedTasks ->
+val skipNativeAvifBuild = providers.gradleProperty("imageshare.skipNativeAvifBuild")
+    .map(String::toBoolean)
+    .getOrElse(false)
+val configureNativeBuild = (!skipNativeJpegBuild || !skipNativeAvifBuild) && gradle.startParameter.taskNames.let { requestedTasks ->
     requestedTasks.isEmpty() || requestedTasks.any { taskName ->
         val normalized = taskName.lowercase()
         !normalized.contains("lint") &&
@@ -25,9 +28,10 @@ android {
     defaultConfig {
         minSdk = 29
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("boolean", "ENABLE_NATIVE_JPEG", "true")
+        buildConfigField("boolean", "ENABLE_NATIVE_JPEG", (!skipNativeJpegBuild).toString())
+        buildConfigField("boolean", "ENABLE_NATIVE_AVIF", (!skipNativeAvifBuild).toString())
 
-        if (configureNativeJpegBuild) {
+        if (configureNativeBuild) {
             externalNativeBuild {
                 cmake {
                     cppFlags += "-std=c++17"
@@ -35,6 +39,8 @@ android {
                         "-DANDROID_STL=c++_static",
                         "-DCMAKE_BUILD_TYPE=Release",
                         "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
+                        "-DIMAGESHARE_BUILD_JPEG=${if (skipNativeJpegBuild) "OFF" else "ON"}",
+                        "-DIMAGESHARE_BUILD_AVIF=${if (skipNativeAvifBuild) "OFF" else "ON"}",
                     )
                 }
             }
@@ -50,7 +56,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    if (configureNativeJpegBuild) {
+    if (configureNativeBuild) {
         externalNativeBuild {
             cmake {
                 path = file("src/main/cpp/CMakeLists.txt")

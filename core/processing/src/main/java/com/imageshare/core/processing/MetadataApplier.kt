@@ -39,6 +39,7 @@ class MetadataApplier(private val resolver: ContentResolver? = null) {
             EncodeFormat.PNG -> if (mode == MetadataMode.StripAll) stripPngMetadata(encoded) else encoded.copyOf()
             EncodeFormat.JPEG,
             EncodeFormat.HEIF,
+            EncodeFormat.AVIF,
             EncodeFormat.WEBP_LOSSY,
             EncodeFormat.WEBP_LOSSLESS,
             -> applyExifMode(encoded, mode, source)

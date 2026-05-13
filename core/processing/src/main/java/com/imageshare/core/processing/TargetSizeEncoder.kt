@@ -11,7 +11,10 @@ class TargetSizeEncoder(
     encoder: Encoder = Encoder(),
     private val resizer: Resizer = Resizer(),
 ) {
-    private val encode: suspend (Bitmap, EncodeFormat, Int, AlphaPolicy) -> EncodeResult = encoder::encode
+    private val encode: suspend (Bitmap, EncodeFormat, Int, AlphaPolicy) -> EncodeResult =
+        { bitmap, format, quality, alphaPolicy ->
+            encoder.encode(bitmap, format, quality, alphaPolicy)
+        }
 
     internal constructor(
         resizer: Resizer = Resizer(),

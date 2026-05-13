@@ -946,6 +946,7 @@ private fun formatLabel(format: EncodeFormat, accessible: Boolean = false): Stri
         stringResource(if (accessible) R.string.output_format_webp_lossless_accessible else R.string.output_format_webp_lossless)
     }
     EncodeFormat.HEIF -> stringResource(if (accessible) R.string.output_format_heif_accessible else R.string.output_format_heif)
+    EncodeFormat.AVIF -> stringResource(if (accessible) R.string.output_format_avif_accessible else R.string.output_format_avif)
 }
 
 @Composable

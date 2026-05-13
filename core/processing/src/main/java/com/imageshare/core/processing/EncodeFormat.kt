@@ -17,4 +17,11 @@ enum class EncodeFormat {
      * Use [HeifAvailability.isWriteSupported] to probe at runtime.
      */
     HEIF,
+
+    /**
+     * AVIF output via AndroidX AvifWriter on Android 14+ or native libavif
+     * scaffold on older devices when the AVIF beta flag is enabled.
+     * Use [AvifAvailability.isAnyWriteSupported] to probe at runtime.
+     */
+    AVIF,
 }
