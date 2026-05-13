@@ -2,6 +2,18 @@
 
 This document tracks gate findings from the Phase 3 audit that are deliberately deferred. Each item links to the gate review that surfaced it and indicates the natural home for the fix.
 
+## Resolved in v10-design-polish
+
+- **P1-D5/P2-D7**: FilterChip a11y now preserves selected-state semantics and uses a 48dp minimum touch target. ✅
+- **P1-D8/P2-D6**: Idle batch status chrome is hidden. ✅
+- **P2-D8**: `CustomDimensionsCard` header now has a rotating chevron, button role, and expanded/collapsed state semantics. ✅
+- **P2-D9/D11**: `CustomDimensionsCard` lock-aspect and allow-upscaling controls are toggleable rows with merged switch semantics. ✅
+- **P2-D12**: Disabled Save copy button no longer applies manual alpha over Material disabled colors. ✅
+- **P2-D15**: Size and dimension formatters now use locale-aware `NumberFormat` for non-ASCII digits. ✅
+- **P3-D8**: Foreground batch notification title is branded as ImageShare. ✅
+- **P3-D13**: Recents `LazyRow` now uses vertical padding instead of a tight height cap, leaving focus-ring breathing room. ✅
+- **P3-D14**: Audited `getStringOrFallback`; the helper has no documented real-crash rationale for the `runCatching` wrapper. Defer source cleanup to v1.1 because `BatchProcessWorker.kt` is owned by the parallel perf-polish pass in this cycle.
+- **P3-D15**: Open documents button no longer duplicates the tooltip as its accessibility name. ✅
 
 ## Resolved in v10-perf-polish
 
@@ -31,12 +43,7 @@ This document tracks gate findings from the Phase 3 audit that are deliberately 
 ### Performance
 
 ### Design
-- **P1-D5/P2-D7**: FilterChip overrides built-in selected-state semantics; chip height 32dp < Material 48dp guideline. → v1.0 design-polish phase.
-- **P1-D8/P2-D6**: "Status: idle" Text rendered as persistent chrome when no batch running. → v1.0 design-polish phase.
-- **P2-D8**: CustomDimensionsCard header has no chevron / expand affordance. → v1.0 design-polish phase.
-- **P2-D9/D11**: CustomDimensionsCard Lock-aspect + Allow-upscaling Switches not toggleable from labels; Switches lack contentDescription. → v1.0 design-polish phase. (NOTE: the new AdvancedSection introduced in p3-workmanager initially shared this defect; FIXED in this gate-fix cycle.)
-- **P2-D12**: Manual `Modifier.alpha(0.5f)` on disabled OutlinedButton overrides M3 disabled colors (compound alpha may fail WCAG 3:1 minimum for UI components). → v1.0 design-polish phase.
-- **P2-D15**: `String.format(Locale.getDefault(), "%.1f", ...)` could use `NumberFormat.getNumberInstance(Locale.getDefault())` for non-ASCII digits. → v1.0 design-polish phase.
+- No remaining Phase 1/2 design carryover.
 
 ## Phase 3 specific (deferred to later phase)
 
@@ -51,10 +58,7 @@ This document tracks gate findings from the Phase 3 audit that are deliberately 
 - **P3-P7**: Re-baseline profile on a wider device matrix before Play submission. → v1.0-launch phase.
 
 ### Design
-- **P3-D8**: Notification title is "Processing images" — unbranded. Update to include "ImageShare" prefix. → v1.0 design-polish phase.
-- **P3-D13**: Recents LazyRow heightIn exactly equals chip size — clips focus ring. → v1.0 design-polish phase.
-- **P3-D14**: `getStringOrFallback` defensive resource wrap — investigate whether there's a real crash to document or remove. → v1.0 design-polish phase.
-- **P3-D15**: "Open documents (advanced)" tooltip and contentDescription are redundant. → v1.0 design-polish phase.
+- No remaining Phase 3 design carryover.
 
 ## Launcher icon fallback note
 

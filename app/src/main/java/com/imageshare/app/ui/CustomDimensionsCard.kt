@@ -17,11 +17,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PlainTooltip
@@ -37,14 +40,25 @@ import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.imageshare.app.MainViewModel
@@ -70,11 +84,39 @@ fun CustomDimensionsCard(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            TextButton(
-                onClick = { expanded = !expanded },
-                modifier = Modifier.testTag("custom-dimensions-toggle"),
+            val toggleLabel = stringResource(
+                if (expanded) R.string.custom_dims_collapse_label else R.string.custom_dims_expand_label,
+            )
+            val expandedState = stringResource(if (expanded) R.string.expanded else R.string.collapsed)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        onClickLabel = toggleLabel,
+                        onClick = { expanded = !expanded },
+                    )
+                    .semantics {
+                        role = Role.Button
+                        stateDescription = expandedState
+                    }
+                    .padding(vertical = 12.dp)
+                    .testTag("custom-dimensions-toggle"),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(stringResource(R.string.custom_dimensions_title))
+                Text(
+                    stringResource(R.string.custom_dimensions_title),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                val rotation by animateFloatAsState(
+                    targetValue = if (expanded) 180f else 0f,
+                    label = "customDimensionsChevronRotation",
+                )
+                Icon(
+                    imageVector = ExpandMoreIcon,
+                    contentDescription = null,
+                    modifier = Modifier.rotate(rotation),
+                )
             }
             if (expanded) {
                 CustomDimensionsContent(
@@ -294,14 +336,27 @@ private fun ExactInputs(
         )
     }
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = lockAspect,
+                role = Role.Switch,
+                onValueChange = onLockAspectChange,
+            )
+            .semantics(mergeDescendants = true) { }
+            .padding(vertical = 8.dp)
+            .testTag("aspect-lock-switch"),
         horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(stringResource(R.string.lock_aspect_ratio))
+        Text(
+            stringResource(R.string.lock_aspect_ratio),
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+        )
         Switch(
             checked = lockAspect,
-            onCheckedChange = onLockAspectChange,
-            modifier = Modifier.testTag("aspect-lock-switch"),
+            onCheckedChange = null,
         )
     }
 }
@@ -356,14 +411,27 @@ private fun AllowUpscaleSwitch(
         state = rememberTooltipState(),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = allowUpscale,
+                    role = Role.Switch,
+                    onValueChange = onAllowUpscaleChange,
+                )
+                .semantics(mergeDescendants = true) { }
+                .padding(vertical = 8.dp)
+                .testTag("allow-upscale-switch"),
             horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(stringResource(R.string.allow_upscaling))
+            Text(
+                stringResource(R.string.allow_upscaling),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyLarge,
+            )
             Switch(
                 checked = allowUpscale,
-                onCheckedChange = onAllowUpscaleChange,
-                modifier = Modifier.testTag("allow-upscale-switch"),
+                onCheckedChange = null,
             )
         }
     }
@@ -451,3 +519,21 @@ private const val MAX_PERCENT = 100
 private const val PERCENT_STEP = 5
 private const val PERCENT_SLIDER_STEPS = 17
 private const val OVERRIDE_DEBOUNCE_MS = 250L
+
+private val ExpandMoreIcon: ImageVector = ImageVector.Builder(
+    name = "ExpandMore",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+).apply {
+    path(fill = SolidColor(Color.Black)) {
+        moveTo(7.41f, 8.59f)
+        lineTo(12f, 13.17f)
+        lineTo(16.59f, 8.59f)
+        lineTo(18f, 10f)
+        lineTo(12f, 16f)
+        lineTo(6f, 10f)
+        close()
+    }
+}.build()

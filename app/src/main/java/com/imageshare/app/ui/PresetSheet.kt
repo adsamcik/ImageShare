@@ -74,7 +74,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.layout.ContentScale
@@ -86,6 +85,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -473,8 +473,7 @@ private fun EmptyState(
                 OutlinedButton(
                     onClick = onOpenDocuments,
                     modifier = Modifier
-                        .testTag("open-documents-button")
-                        .semantics { contentDescription = openDocumentsTooltip },
+                        .testTag("open-documents-button"),
                 ) {
                     Text(openDocumentsLabel)
                 }
@@ -501,7 +500,7 @@ private fun RecentsSection(
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 60.dp)
+                .padding(vertical = 8.dp)
                 .testTag("recents-list"),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -627,14 +626,18 @@ private fun PresetsSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             presets.forEach { preset ->
-                val chipDescription = stringResource(R.string.preset_content_description, preset.displayName)
+                val isSelected = preset.id == selectedPreset?.id
+                val selectedState = stringResource(R.string.chip_state_selected)
+                val notSelectedState = stringResource(R.string.chip_state_not_selected)
                 FilterChip(
-                    selected = preset.id == selectedPreset?.id,
+                    selected = isSelected,
                     onClick = { onPresetSelected(preset.id) },
                     label = { Text(preset.displayName) },
-                    modifier = Modifier.semantics {
-                        contentDescription = chipDescription
-                    },
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .semantics {
+                            stateDescription = if (isSelected) selectedState else notSelectedState
+                        },
                 )
             }
         }
@@ -666,10 +669,7 @@ private fun PresetSummary(preset: Preset) {
 @Composable
 private fun StatusLine(processingState: ProcessingState) {
     when (processingState) {
-        ProcessingState.Idle -> {
-            val text = stringResource(R.string.status_idle)
-            Text(text = text, modifier = Modifier.semantics { contentDescription = text })
-        }
+        ProcessingState.Idle -> return
         is ProcessingState.Running -> BatchProgressStatus(processingState.progress)
         is ProcessingState.Done -> {
             val text = stringResource(
@@ -846,7 +846,6 @@ private fun ProcessButtons(
                     enabled = saveEnabled,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .alpha(if (saveEnabled) 1f else 0.5f)
                         .semantics { contentDescription = saveCopyDescription },
                 ) {
                     Text(stringResource(R.string.save_copy))

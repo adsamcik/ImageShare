@@ -5,6 +5,10 @@
     <string name="preset_title">Preset</string>
     <string name="resize_section_title">Resize</string>
     <string name="custom_dimensions_title">Customize dimensions</string>
+    <string name="custom_dims_expand_label">expand custom dimensions</string>
+    <string name="custom_dims_collapse_label">collapse custom dimensions</string>
+    <string name="expanded">expanded</string>
+    <string name="collapsed">collapsed</string>
     <string name="empty_state_title">Hello ImageShare</string>
     <string name="empty_state_hint">Share an image to this app to begin.</string>
     <string name="empty_state_description">Hello ImageShare. Share an image to this app to begin.</string>
@@ -24,7 +28,6 @@
     <string name="save_copy">Save copy</string>
     <string name="save_copy_description">Save copy</string>
     <string name="save_copy_disabled_no_results">Process images first</string>
-    <string name="status_idle">Status: idle</string>
     <string name="status_done">Status: done — %1$d succeeded, %2$d failed</string>
     <string name="unnamed_image">Unnamed image</string>
     <string name="image_fallback">image</string>
@@ -79,10 +82,11 @@
     <string name="batch_item_running">%1$s…</string>
     <string name="batch_item_done">Done</string>
     <string name="batch_item_cancelled">Cancelled</string>
-    <string name="preset_content_description">Preset %1$s</string>
+    <string name="chip_state_selected">selected</string>
+    <string name="chip_state_not_selected">not selected</string>
     <string name="selected_preset_content_description">Selected preset %1$s, %2$s</string>
-    <string name="dimensions_accessible">%1$d by %2$d pixels</string>
-    <string name="dimensions_text">%1$d×%2$d</string>
+    <string name="dimensions_accessible">%1$s by %2$s pixels</string>
+    <string name="dimensions_text">%1$s×%2$s</string>
     <string name="unknown_dimensions">unknown dimensions</string>
     <string name="unknown_size">unknown size</string>
     <string name="source_detail_summary">%1$s  %2$s</string>
@@ -121,7 +125,7 @@
     <string name="run_in_background_description">Use a foreground notification so larger batches keep running if you leave the app.</string>
     <string name="batch_channel_name">Batch processing</string>
     <string name="batch_channel_description">Progress for image processing batches.</string>
-    <string name="batch_notification_title">Processing images</string>
+    <string name="batch_notification_title">ImageShare · Processing images</string>
     <string name="batch_notification_text">Processed %1$d of %2$d images</string>
     <string name="licenses_screen_title">Open-source licenses</string>
     <string name="licenses_back_a11y">Back</string>

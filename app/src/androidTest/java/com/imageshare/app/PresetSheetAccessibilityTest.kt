@@ -22,6 +22,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.test.core.app.ApplicationProvider
+import androidx.compose.ui.test.hasText
 import com.imageshare.app.ComparisonState
 import com.imageshare.app.MainViewModel.CustomOverride
 import com.imageshare.app.processing.PresetPipeline
@@ -68,7 +69,10 @@ class PresetSheetAccessibilityTest {
         }
 
         composeRule.onNodeWithContentDescription("photo.jpg, 64 by 48 pixels, 2.4 kilobytes").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Preset Small file", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNode(
+            hasStateDescription("selected") and hasText("Small file"),
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Process and share", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Save copy", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("Save copy").assertIsDisplayed()
@@ -108,6 +112,10 @@ class PresetSheetAccessibilityTest {
         }
 
         composeRule.onNodeWithTag("custom-dimensions-toggle").performClick()
+        composeRule.onNode(
+            hasTestTag("custom-dimensions-toggle") and hasStateDescription("expanded"),
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
         composeRule.onNodeWithTag("resize-mode-exact").performClick()
         composeRule.onNodeWithTag("aspect-lock-switch").performClick()
         composeRule.onNodeWithTag("exact-width-field").performTextClearance()
@@ -193,3 +201,8 @@ class PresetSheetAccessibilityTest {
         composeRule.onAllNodes(hasTestTag("comparison-screen")).assertCountEquals(0)
     }
 }
+
+private fun hasStateDescription(expected: String): SemanticsMatcher =
+    SemanticsMatcher("state description is $expected") { node ->
+        node.config.getOrNull(SemanticsProperties.StateDescription) == expected
+    }

@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.imageshare.app.R
 import com.imageshare.core.io.SourceItem
+import java.text.NumberFormat
 import java.util.Locale
 
 @Composable
@@ -18,7 +19,8 @@ fun accessibleDimensionsText(source: SourceItem): String = accessibleDimensionsT
 @Composable
 fun dimensionsText(width: Int?, height: Int?): String {
     return if (width != null && height != null) {
-        stringResource(R.string.dimensions_text, width, height)
+        val integerFormat = NumberFormat.getIntegerInstance(Locale.getDefault())
+        stringResource(R.string.dimensions_text, integerFormat.format(width), integerFormat.format(height))
     } else {
         stringResource(R.string.unknown_dimensions)
     }
@@ -27,7 +29,8 @@ fun dimensionsText(width: Int?, height: Int?): String {
 @Composable
 fun accessibleDimensionsText(width: Int?, height: Int?): String {
     return if (width != null && height != null) {
-        stringResource(R.string.dimensions_accessible, width, height)
+        val integerFormat = NumberFormat.getIntegerInstance(Locale.getDefault())
+        stringResource(R.string.dimensions_accessible, integerFormat.format(width), integerFormat.format(height))
     } else {
         stringResource(R.string.unknown_dimensions)
     }
@@ -72,12 +75,15 @@ private fun fileSizeText(
 ): String {
     if (bytes == null) return labels.unknown
     val kb = bytes / BYTES_PER_KIB.toDouble()
-    val locale = Locale.getDefault()
+    val numberFormat = NumberFormat.getNumberInstance(Locale.getDefault()).apply {
+        maximumFractionDigits = 1
+        minimumFractionDigits = 1
+    }
     val isKilobytes = kb < BYTES_PER_KIB
     val amount = if (isKilobytes) {
-        String.format(locale, "%.1f", kb)
+        numberFormat.format(kb)
     } else {
-        String.format(locale, "%.1f", kb / BYTES_PER_KIB)
+        numberFormat.format(kb / BYTES_PER_KIB)
     }
     return when {
         accessible && isKilobytes -> labels.kilobytesAccessible(amount)
