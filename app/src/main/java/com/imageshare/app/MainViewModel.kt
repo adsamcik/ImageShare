@@ -6,6 +6,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -23,6 +24,7 @@ import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.io.InputCoordinator
 import com.imageshare.core.io.PersistableUriRegistry
+import com.imageshare.core.io.RecentUriEntry
 import com.imageshare.core.io.ShareLauncher
 import com.imageshare.core.io.SharedIntakeStager
 import com.imageshare.core.io.SourceItem
@@ -110,7 +112,7 @@ class MainViewModel(
         shared + picked
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val recentsUris: StateFlow<List<Uri>> = persistableUriRegistry.observe()
+    val recentsUris: StateFlow<List<RecentUriEntry>> = persistableUriRegistry.observe()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val processingState: StateFlow<ProcessingState> = mutableProcessingState.asStateFlow()
@@ -151,7 +153,9 @@ class MainViewModel(
         if (uris.isEmpty()) return
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                uris.forEach { uri -> persistableUriRegistry.add(uri) }
+                uris.forEach { uri ->
+                    persistableUriRegistry.add(uri, displayName = queryDisplayName(uri))
+                }
             }
             addPickedSources(uris)
             mutableProcessingState.value = ProcessingState.Idle
@@ -462,6 +466,19 @@ class MainViewModel(
             (item.state as? BatchOrchestrator.ItemState.Done)?.result as? PresetPipeline.Result.Success
         }
     }
+
+    private fun queryDisplayName(uri: Uri): String? = runCatching {
+        appContext.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+        }
+    }.getOrNull()
 
     class Factory(private val context: Context) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")

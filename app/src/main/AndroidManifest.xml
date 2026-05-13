@@ -7,8 +7,10 @@
 
     <application
         android:name=".ImageShareApp"
-        android:theme="@style/Theme.ImageShare"
-        android:label="@string/app_name">
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.ImageShare">
         <activity
             android:name=".MainActivity"
             android:exported="true"

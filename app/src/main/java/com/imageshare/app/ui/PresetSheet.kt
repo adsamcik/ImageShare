@@ -19,6 +19,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.rememberScrollState
@@ -69,12 +71,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -90,6 +95,7 @@ import com.imageshare.app.SaveStatus
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.io.SourceItem
+import com.imageshare.core.io.RecentUriEntry
 import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.core.io.rememberOpenDocumentLauncher
 import com.imageshare.core.io.rememberPhotoPickerLauncher
@@ -228,7 +234,7 @@ fun PresetSheet(
     onPresetSelected: (String) -> Unit,
     onPickFromGallery: () -> Unit,
     onOpenDocuments: () -> Unit = {},
-    recentsUris: List<Uri> = emptyList(),
+    recentsUris: List<RecentUriEntry> = emptyList(),
     onRecentSelected: (Uri) -> Unit = {},
     onRecentRemoved: (Uri) -> Unit = {},
     onProcessAndShare: () -> Unit,
@@ -292,7 +298,6 @@ fun PresetSheet(
                     } else {
                         SourcesSection(sources)
                         PresetsSection(presets, selectedPreset, onPresetSelected)
-                        AdvancedSection(runInBackground, onRunInBackgroundChanged)
                         effectivePreset?.let { PresetSummary(it) }
                         selectedPreset?.let {
                             Text(stringResource(R.string.resize_section_title), style = MaterialTheme.typography.titleMedium)
@@ -310,6 +315,7 @@ fun PresetSheet(
                                 modifier = Modifier.testTag("upscale-warning"),
                             )
                         }
+                        AdvancedSection(runInBackground, onRunInBackgroundChanged)
                         StatusLine(processingState)
                         ResultSummary(
                             processingState = processingState,
@@ -365,18 +371,26 @@ private fun AdvancedSection(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.advanced_section_title), style = MaterialTheme.typography.titleMedium)
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = runInBackground,
+                    role = Role.Switch,
+                    onValueChange = onRunInBackgroundChanged,
+                )
+                .semantics(mergeDescendants = true) { }
+                .padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.run_in_background))
+                Text(stringResource(R.string.run_in_background), style = MaterialTheme.typography.bodyLarge)
                 Text(
                     text = stringResource(R.string.run_in_background_description),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Switch(checked = runInBackground, onCheckedChange = onRunInBackgroundChanged)
+            Switch(checked = runInBackground, onCheckedChange = null)
         }
     }
 }
@@ -386,7 +400,7 @@ private fun AdvancedSection(
 private fun EmptyState(
     onPickFromGallery: () -> Unit,
     onOpenDocuments: () -> Unit,
-    recentsUris: List<Uri>,
+    recentsUris: List<RecentUriEntry>,
     onRecentSelected: (Uri) -> Unit,
     onRecentRemoved: (Uri) -> Unit,
 ) {
@@ -434,7 +448,7 @@ private fun EmptyState(
 
 @Composable
 private fun RecentsSection(
-    recentsUris: List<Uri>,
+    recentsUris: List<RecentUriEntry>,
     onRecentSelected: (Uri) -> Unit,
     onRecentRemoved: (Uri) -> Unit,
 ) {
@@ -447,11 +461,12 @@ private fun RecentsSection(
                 .testTag("recents-list"),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(recentsUris) { uri ->
+            itemsIndexed(recentsUris) { index, entry ->
                 RecentUriChip(
-                    uri = uri,
-                    onSelected = { onRecentSelected(uri) },
-                    onRemoved = { onRecentRemoved(uri) },
+                    entry = entry,
+                    index = index + 1,
+                    onSelected = { onRecentSelected(entry.uri) },
+                    onRemoved = { onRecentRemoved(entry.uri) },
                 )
             }
         }
@@ -460,21 +475,24 @@ private fun RecentsSection(
 
 @Composable
 private fun RecentUriChip(
-    uri: Uri,
+    entry: RecentUriEntry,
+    index: Int,
     onSelected: () -> Unit,
     onRemoved: () -> Unit,
 ) {
     val context = LocalContext.current
-    val imageRequest = remember(uri) {
+    val imageRequest = remember(entry.uri) {
         ImageRequest.Builder(context)
-            .data(uri)
+            .data(entry.uri)
             .size(120, 120)
             .precision(Precision.INEXACT)
             .crossfade(true)
             .build()
     }
-    val displayName = stringResource(R.string.unnamed_image)
-    val chipDescription = stringResource(R.string.recents_chip_a11y, displayName)
+    val chipDescription = entry.displayName?.let { displayName ->
+        stringResource(R.string.recents_chip_a11y, displayName)
+    } ?: stringResource(R.string.recents_chip_a11y_indexed, index)
+    val chipActionLabel = stringResource(R.string.recents_chip_action_label)
     val removeDescription = stringResource(R.string.recents_remove_a11y)
 
     Box(modifier = Modifier.size(60.dp)) {
@@ -485,16 +503,35 @@ private fun RecentUriChip(
             modifier = Modifier
                 .size(60.dp)
                 .clip(MaterialTheme.shapes.medium)
-                .clickable { onSelected() },
+                .clickable(
+                    onClickLabel = chipActionLabel,
+                    onClick = { onSelected() },
+                )
+                .semantics { role = Role.Button },
         )
-        IconButton(
-            onClick = onRemoved,
+        Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .size(24.dp)
-                .semantics { contentDescription = removeDescription },
+                .size(36.dp),
         ) {
-            Icon(Icons.Filled.Close, contentDescription = removeDescription)
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                shape = CircleShape,
+                modifier = Modifier.matchParentSize(),
+            ) {}
+            IconButton(
+                onClick = onRemoved,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(48.dp)
+                    .semantics { contentDescription = removeDescription },
+            ) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = removeDescription,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         }
     }
 }

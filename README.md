@@ -25,3 +25,7 @@ Installed SDK note: this scaffold uses the highest stable installed platform fou
 ```
 
 The initial unit test setup uses JUnit 4 to keep the Android Gradle test pipeline simple for Phase 0.
+
+## Launcher icon assets
+
+ImageShare ships a Material-style adaptive launcher icon (`mipmap-anydpi-v26`) with a geometric photo-card/share-arrow foreground on a solid blue background. The app supports Android 10+ (minSdk 29), so density-specific pre-API-26 PNG launcher fallbacks are intentionally not generated; generate `mipmap-mdpi` through `mipmap-xxxhdpi` PNGs from the vector source only if minSdk is lowered below 26.

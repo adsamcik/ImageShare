@@ -7,6 +7,8 @@ import android.net.Uri
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.preferencesOf
+import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -23,9 +25,9 @@ class PersistableUriRegistryTest {
         val registry = registry(resolver)
         val uri = Uri.parse("content://images/one")
 
-        registry.add(uri)
+        registry.add(uri, displayName = "one.jpg")
 
-        assertEquals(listOf(uri), registry.observe().first())
+        assertEquals(listOf(RecentUriEntry(uri, "one.jpg")), registry.observe().first())
         assertEquals(listOf(uri), resolver.taken)
     }
 
@@ -36,11 +38,14 @@ class PersistableUriRegistryTest {
         val first = Uri.parse("content://images/one")
         val second = Uri.parse("content://images/two")
 
-        registry.add(first)
-        registry.add(second)
-        registry.add(first)
+        registry.add(first, displayName = "one.jpg")
+        registry.add(second, displayName = "two.jpg")
+        registry.add(first, displayName = "one-updated.jpg")
 
-        assertEquals(listOf(first, second), registry.observe().first())
+        assertEquals(
+            listOf(RecentUriEntry(first, "one-updated.jpg"), RecentUriEntry(second, "two.jpg")),
+            registry.observe().first(),
+        )
     }
 
     @Test
@@ -49,9 +54,16 @@ class PersistableUriRegistryTest {
         val registry = registry(resolver, maxEntries = 3)
         val uris = (1..4).map { Uri.parse("content://images/$it") }
 
-        uris.forEach { registry.add(it) }
+        uris.forEachIndexed { index, uri -> registry.add(uri, displayName = "image-$index.jpg") }
 
-        assertEquals(listOf(uris[3], uris[2], uris[1]), registry.observe().first())
+        assertEquals(
+            listOf(
+                RecentUriEntry(uris[3], "image-3.jpg"),
+                RecentUriEntry(uris[2], "image-2.jpg"),
+                RecentUriEntry(uris[1], "image-1.jpg"),
+            ),
+            registry.observe().first(),
+        )
         assertEquals(listOf(uris[0]), resolver.released)
     }
 
@@ -61,12 +73,12 @@ class PersistableUriRegistryTest {
         val registry = registry(resolver)
         val first = Uri.parse("content://images/one")
         val second = Uri.parse("content://images/two")
-        registry.add(first)
-        registry.add(second)
+        registry.add(first, displayName = "one.jpg")
+        registry.add(second, displayName = "two.jpg")
 
         registry.remove(first)
 
-        assertEquals(listOf(second), registry.observe().first())
+        assertEquals(listOf(RecentUriEntry(second, "two.jpg")), registry.observe().first())
         assertEquals(first, resolver.released.last())
     }
 
@@ -77,15 +89,30 @@ class PersistableUriRegistryTest {
         val first = Uri.parse("content://images/one")
         val second = Uri.parse("content://images/two")
         val third = Uri.parse("content://images/three")
-        registry.add(first)
-        registry.add(second)
-        registry.add(third)
+        registry.add(first, displayName = "one.jpg")
+        registry.add(second, displayName = "two.jpg")
+        registry.add(third, displayName = "three.jpg")
         resolver.persisted.remove(third)
 
         val removed = registry.reconcile()
 
         assertEquals(1, removed)
-        assertEquals(listOf(second, first), registry.observe().first())
+        assertEquals(
+            listOf(RecentUriEntry(second, "two.jpg"), RecentUriEntry(first, "one.jpg")),
+            registry.observe().first(),
+        )
+    }
+
+    @Test
+    fun legacyUriOnlyEntriesMigrateWithNullDisplayName() = runTest {
+        val resolver = FakeContentResolver()
+        val legacyUri = Uri.parse("content://images/legacy")
+        val dataStore = InMemoryPreferencesDataStore(
+            preferencesOf(stringPreferencesKey("persisted_uris") to legacyUri.toString()),
+        )
+        val registry = PersistableUriRegistry(dataStore, resolver)
+
+        assertEquals(listOf(RecentUriEntry(legacyUri, null)), registry.observe().first())
     }
 
     private fun registry(
@@ -97,8 +124,10 @@ class PersistableUriRegistryTest {
     }
 }
 
-private class InMemoryPreferencesDataStore : DataStore<Preferences> {
-    private val state = MutableStateFlow(emptyPreferences())
+private class InMemoryPreferencesDataStore(
+    initialPreferences: Preferences = emptyPreferences(),
+) : DataStore<Preferences> {
+    private val state = MutableStateFlow(initialPreferences)
 
     override val data = state
 

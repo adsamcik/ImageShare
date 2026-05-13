@@ -14,6 +14,11 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
+data class RecentUriEntry(
+    val uri: Uri,
+    val displayName: String?,
+)
+
 /**
  * Tracks URIs that the user has explicitly chosen via ACTION_OPEN_DOCUMENT and for which we've
  * called takePersistableUriPermission(). These URIs can be re-opened across reboots until the
@@ -30,13 +35,17 @@ class PersistableUriRegistry(
     private val resolver: ContentResolver,
     private val maxEntries: Int = DEFAULT_MAX_ENTRIES,
 ) {
-    /** Emits the current ordered list of persisted URIs, newest first. */
-    fun observe(): Flow<List<Uri>> = dataStore.data
-        .map { prefs -> prefs.uriStrings().mapNotNull { it.toUriOrNull() } }
+    /** Emits the current ordered list of persisted URI entries, newest first. */
+    fun observe(): Flow<List<RecentUriEntry>> = dataStore.data
+        .map { prefs -> prefs.storedEntries().mapNotNull { it.toRecentUriEntryOrNull() } }
         .flowOn(Dispatchers.IO)
 
     /** Persist a URI grant. Idempotent: re-adding the same URI moves it to the front. */
-    suspend fun add(uri: Uri, flags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION) {
+    suspend fun add(
+        uri: Uri,
+        displayName: String? = null,
+        flags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION,
+    ) {
         withContext(Dispatchers.IO) {
             val permissionFlags = flags.persistableFlags()
             val persisted = runCatching {
@@ -48,11 +57,14 @@ class PersistableUriRegistry(
 
             var dropped: List<Uri> = emptyList()
             dataStore.edit { prefs ->
-                val updated = (listOf(uri.toString()) + prefs.uriStrings().filterNot { it == uri.toString() })
-                    .take(maxEntries)
-                dropped = prefs.uriStrings()
+                val updatedEntry = RecentUriEntry(uri, displayName).toStoredString()
+                val updated = (
+                    listOf(updatedEntry) +
+                        prefs.storedEntries().filterNot { it.storedUriString() == uri.toString() }
+                    ).take(maxEntries)
+                dropped = prefs.storedEntries()
                     .filterNot { it in updated }
-                    .mapNotNull { it.toUriOrNull() }
+                    .mapNotNull { it.toRecentUriEntryOrNull()?.uri }
                 prefs[URI_LIST_KEY] = updated.joinToString(LIST_DELIMITER)
             }
             dropped.forEach { droppedUri ->
@@ -71,8 +83,8 @@ class PersistableUriRegistry(
                 Log.w(TAG, "Failed to release URI grant for $uri", it)
             }
             dataStore.edit { prefs ->
-                prefs[URI_LIST_KEY] = prefs.uriStrings()
-                    .filterNot { it == uri.toString() }
+                prefs[URI_LIST_KEY] = prefs.storedEntries()
+                    .filterNot { it.storedUriString() == uri.toString() }
                     .joinToString(LIST_DELIMITER)
             }
         }
@@ -83,8 +95,8 @@ class PersistableUriRegistry(
         val alive = resolver.persistedUriPermissions.map { it.uri.toString() }.toSet()
         var removed = 0
         dataStore.edit { prefs ->
-            val current = prefs.uriStrings()
-            val kept = current.filter { it in alive }
+            val current = prefs.storedEntries()
+            val kept = current.filter { it.storedUriString() in alive }
             removed = current.size - kept.size
             prefs[URI_LIST_KEY] = kept.joinToString(LIST_DELIMITER)
         }
@@ -94,14 +106,36 @@ class PersistableUriRegistry(
     companion object {
         const val DEFAULT_MAX_ENTRIES = 12
         private const val TAG = "PersistableUriRegistry"
-        private const val LIST_DELIMITER = "\n"
     }
 }
 
-private fun Preferences.uriStrings(): List<String> =
-    this[URI_LIST_KEY]?.split("\n")?.filter { it.isNotBlank() }.orEmpty()
+private const val LIST_DELIMITER = "\n"
+private const val FIELD_DELIMITER = "\u001F"
 
-private fun String.toUriOrNull(): Uri? = runCatching { Uri.parse(this) }.getOrNull()
+private fun Preferences.storedEntries(): List<String> =
+    this[URI_LIST_KEY]?.split(LIST_DELIMITER)?.filter { it.isNotBlank() }.orEmpty()
+
+private fun String.toRecentUriEntryOrNull(): RecentUriEntry? {
+    val separatorIndex = indexOf(FIELD_DELIMITER)
+    val uriString = if (separatorIndex >= 0) substring(0, separatorIndex) else this
+    val displayName = if (separatorIndex >= 0) {
+        substring(separatorIndex + 1).ifBlank { null }
+    } else {
+        null
+    }
+    return runCatching { RecentUriEntry(Uri.parse(uriString), displayName) }.getOrNull()
+}
+
+private fun String.storedUriString(): String {
+    val separatorIndex = indexOf(FIELD_DELIMITER)
+    return if (separatorIndex >= 0) substring(0, separatorIndex) else this
+}
+
+private fun RecentUriEntry.toStoredString(): String =
+    "${uri}$FIELD_DELIMITER${displayName.sanitizedForStorage()}"
+
+private fun String?.sanitizedForStorage(): String =
+    this?.replace(LIST_DELIMITER, " ")?.replace(FIELD_DELIMITER, " ")?.trim().orEmpty()
 
 private fun Int.persistableFlags(): Int =
     this and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
