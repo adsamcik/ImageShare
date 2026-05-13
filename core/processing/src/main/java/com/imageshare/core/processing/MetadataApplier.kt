@@ -37,6 +37,7 @@ class MetadataApplier(private val resolver: ContentResolver? = null) {
         when (format) {
             EncodeFormat.PNG -> encoded.copyOf()
             EncodeFormat.JPEG,
+            EncodeFormat.HEIF,
             EncodeFormat.WEBP_LOSSY,
             EncodeFormat.WEBP_LOSSLESS,
             -> applyExifMode(encoded, mode, source)

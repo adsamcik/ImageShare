@@ -11,4 +11,10 @@ enum class EncodeFormat {
      * quality 100, which may still be lossy.
      */
     WEBP_LOSSLESS,
+
+    /**
+     * HEIF output via AndroidX HeifWriter; requires a device HEIF encoder.
+     * Use [HeifAvailability.isWriteSupported] to probe at runtime.
+     */
+    HEIF,
 }

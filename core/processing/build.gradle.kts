@@ -21,6 +21,7 @@ android {
 dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.exifinterface)
+    implementation(libs.androidx.heifwriter)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
