@@ -4,12 +4,14 @@ package com.imageshare.app
 
 import android.content.Intent
 import android.net.Uri
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.saving.PersistentSaver
 import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.processing.PresetPipelineRunner
 import com.imageshare.core.io.OutputStore
+import com.imageshare.core.io.PersistableUriRegistry
 import com.imageshare.core.io.ShareLauncher
 import com.imageshare.core.io.ShareUriResolver
 import com.imageshare.core.io.SourceItem
@@ -22,6 +24,7 @@ import com.imageshare.feature.preset.PresetRepository
 import com.imageshare.feature.preset.ResizeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -238,7 +241,17 @@ class MainViewModelTest {
         saver = PersistentSaver(MediaStoreSaver(context.contentResolver), context.contentResolver),
         sharedIntakeRepositoryFactory = { _, _ -> FakeSharedIntakeRepository(listOf(source)) },
         batchOrchestrator = BatchOrchestrator(FakePipelineRunner(result), mainDispatcherRule.dispatcher),
+        persistableUriRegistry = persistableUriRegistry(context),
     )
+
+    private fun persistableUriRegistry(context: android.content.Context): PersistableUriRegistry {
+        val file = File(context.cacheDir, "main-view-model-${System.nanoTime()}.preferences_pb")
+        val dataStore = PreferenceDataStoreFactory.create(
+            scope = kotlinx.coroutines.CoroutineScope(Job() + Dispatchers.IO),
+            produceFile = { file },
+        )
+        return PersistableUriRegistry(dataStore, context.contentResolver)
+    }
 
     private suspend fun stage(viewModel: MainViewModel, vararg sourceItems: SourceItem) {
         viewModel.stageSharedUris("job", sourceItems.map { it.uri }, FakeSharedIntakeRepository(sourceItems.toList()))

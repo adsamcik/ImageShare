@@ -14,6 +14,7 @@ package com.imageshare.app.ui
 import android.content.ActivityNotFoundException
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
@@ -27,15 +28,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -76,6 +84,7 @@ import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.io.SourceItem
 import com.imageshare.core.processing.EncodeFormat
+import com.imageshare.core.io.rememberOpenDocumentLauncher
 import com.imageshare.core.io.rememberPhotoPickerLauncher
 import com.imageshare.feature.preset.MetadataPolicy
 import com.imageshare.feature.preset.OutputFormat
@@ -92,11 +101,15 @@ fun MainScreen(viewModel: MainViewModel) {
     val selectedPreset by viewModel.selectedPreset.collectAsState()
     val effectivePreset by viewModel.effectivePreset.collectAsState()
     val customOverride by viewModel.customOverride.collectAsState()
+    val recentsUris by viewModel.recentsUris.collectAsState()
     val shownComparison by viewModel.shownComparison.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val picker = rememberPhotoPickerLauncher(
         onResult = viewModel::onPickerResult,
         maxItems = Int.MAX_VALUE,
+    )
+    val safLauncher = rememberOpenDocumentLauncher(
+        onResult = viewModel::onOpenDocumentResult,
     )
     val saveDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
@@ -176,6 +189,10 @@ fun MainScreen(viewModel: MainViewModel) {
             viewModel.onPickFromGallery()
             picker.launchMultiple()
         },
+        onOpenDocuments = { safLauncher.launchMultiple() },
+        recentsUris = recentsUris,
+        onRecentSelected = viewModel::onRecentSelected,
+        onRecentRemoved = viewModel::onRecentRemoved,
         onProcessAndShare = viewModel::onProcessAndShare,
         onCancelBatch = viewModel::onCancelBatch,
         onSaveCopy = viewModel::onSaveCopy,
@@ -198,6 +215,10 @@ fun PresetSheet(
     shownComparison: ComparisonState? = null,
     onPresetSelected: (String) -> Unit,
     onPickFromGallery: () -> Unit,
+    onOpenDocuments: () -> Unit = {},
+    recentsUris: List<Uri> = emptyList(),
+    onRecentSelected: (Uri) -> Unit = {},
+    onRecentRemoved: (Uri) -> Unit = {},
     onProcessAndShare: () -> Unit,
     onCancelBatch: () -> Unit,
     onSaveCopy: () -> Unit,
@@ -249,7 +270,13 @@ fun PresetSheet(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     if (sources.isEmpty()) {
-                        EmptyState(onPickFromGallery)
+                        EmptyState(
+                            onPickFromGallery = onPickFromGallery,
+                            onOpenDocuments = onOpenDocuments,
+                            recentsUris = recentsUris,
+                            onRecentSelected = onRecentSelected,
+                            onRecentRemoved = onRecentRemoved,
+                        )
                     } else {
                         SourcesSection(sources)
                         PresetsSection(presets, selectedPreset, onPresetSelected)
@@ -317,10 +344,19 @@ fun PresetSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EmptyState(onPickFromGallery: () -> Unit) {
+private fun EmptyState(
+    onPickFromGallery: () -> Unit,
+    onOpenDocuments: () -> Unit,
+    recentsUris: List<Uri>,
+    onRecentSelected: (Uri) -> Unit,
+    onRecentRemoved: (Uri) -> Unit,
+) {
     val description = stringResource(R.string.empty_state_description)
     val pickLabel = stringResource(R.string.pick_from_gallery)
+    val openDocumentsLabel = stringResource(R.string.open_documents_button)
+    val openDocumentsTooltip = stringResource(R.string.open_documents_tooltip)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -335,7 +371,80 @@ private fun EmptyState(onPickFromGallery: () -> Unit) {
         ) {
             Text(pickLabel)
         }
+        TooltipBox(
+            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+            tooltip = { PlainTooltip { Text(openDocumentsTooltip) } },
+            state = rememberTooltipState(),
+        ) {
+            Box {
+                OutlinedButton(
+                    onClick = onOpenDocuments,
+                    modifier = Modifier.semantics { contentDescription = openDocumentsTooltip },
+                ) {
+                    Text(openDocumentsLabel)
+                }
+            }
+        }
+        if (recentsUris.isNotEmpty()) {
+            RecentsSection(
+                recentsUris = recentsUris,
+                onRecentSelected = onRecentSelected,
+                onRecentRemoved = onRecentRemoved,
+            )
+        }
     }
+}
+
+@Composable
+private fun RecentsSection(
+    recentsUris: List<Uri>,
+    onRecentSelected: (Uri) -> Unit,
+    onRecentRemoved: (Uri) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.recents_section_title), style = MaterialTheme.typography.titleMedium)
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 60.dp)
+                .testTag("recents-list"),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(recentsUris) { uri ->
+                RecentUriChip(
+                    uri = uri,
+                    onSelected = { onRecentSelected(uri) },
+                    onRemoved = { onRecentRemoved(uri) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentUriChip(
+    uri: Uri,
+    onSelected: () -> Unit,
+    onRemoved: () -> Unit,
+) {
+    val removeDescription = stringResource(R.string.recents_remove_a11y)
+    InputChip(
+        selected = false,
+        onClick = onSelected,
+        label = { Text(uri.lastPathSegment ?: uri.toString()) },
+        trailingIcon = {
+            IconButton(
+                onClick = onRemoved,
+                modifier = Modifier
+                    .size(32.dp)
+                    .semantics { contentDescription = removeDescription },
+            ) {
+                Icon(Icons.Filled.Close, contentDescription = removeDescription)
+            }
+        },
+        modifier = Modifier
+            .heightIn(max = 60.dp),
+    )
 }
 
 @Composable

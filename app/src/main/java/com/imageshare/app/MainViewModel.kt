@@ -14,6 +14,7 @@ import com.imageshare.app.saving.PersistentSaver
 import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.io.InputCoordinator
+import com.imageshare.core.io.PersistableUriRegistry
 import com.imageshare.core.io.ShareLauncher
 import com.imageshare.core.io.SharedIntakeStager
 import com.imageshare.core.io.SourceItem
@@ -47,6 +48,7 @@ class MainViewModel(
     private val inputCoordinator: InputCoordinator = InputCoordinator(appContext.contentResolver),
     private val sharedIntakeRepositoryFactory: (ContentResolver, File) -> SharedIntakeRepository = ::AndroidSharedIntakeRepository,
     private val batchOrchestrator: BatchOrchestrator = AppContainer.batchOrchestrator,
+    private val persistableUriRegistry: PersistableUriRegistry = AppContainer.persistableUriRegistry,
 ) : ViewModel() {
     private val sharedSources = MutableStateFlow<List<SourceItem>>(emptyList())
     private val pickedSources = MutableStateFlow<List<SourceItem>>(emptyList())
@@ -85,6 +87,9 @@ class MainViewModel(
         shared + picked
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    val recentsUris: StateFlow<List<Uri>> = persistableUriRegistry.observe()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     val processingState: StateFlow<ProcessingState> = mutableProcessingState.asStateFlow()
     val shareEvents: SharedFlow<Intent> = mutableShareEvents.asSharedFlow()
     val saveDocumentEvents: SharedFlow<Intent> = mutableSaveDocumentEvents.asSharedFlow()
@@ -106,11 +111,32 @@ class MainViewModel(
     fun onPickerResult(uris: List<Uri>) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
-            val resolved = withContext(Dispatchers.IO) {
-                uris.mapNotNull { uri -> runCatching { inputCoordinator.resolve(uri) }.getOrNull() }
-            }
-            pickedSources.value = pickedSources.value + resolved
+            addPickedSources(uris)
             mutableProcessingState.value = ProcessingState.Idle
+        }
+    }
+
+    fun onOpenDocumentResult(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                uris.forEach { uri -> persistableUriRegistry.add(uri) }
+            }
+            addPickedSources(uris)
+            mutableProcessingState.value = ProcessingState.Idle
+        }
+    }
+
+    fun onRecentSelected(uri: Uri) {
+        viewModelScope.launch {
+            addPickedSources(listOf(uri))
+            mutableProcessingState.value = ProcessingState.Idle
+        }
+    }
+
+    fun onRecentRemoved(uri: Uri) {
+        viewModelScope.launch {
+            persistableUriRegistry.remove(uri)
         }
     }
 
@@ -214,6 +240,13 @@ class MainViewModel(
         sharedSources.value = staged
         repository.sweep()
         mutableProcessingState.value = ProcessingState.Idle
+    }
+
+    private suspend fun addPickedSources(uris: List<Uri>) {
+        val resolved = withContext(Dispatchers.IO) {
+            uris.mapNotNull { uri -> runCatching { inputCoordinator.resolve(uri) }.getOrNull() }
+        }
+        pickedSources.value = pickedSources.value + resolved
     }
 
     private fun startBatch(

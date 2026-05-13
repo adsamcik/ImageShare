@@ -9,6 +9,11 @@
     <string name="empty_state_hint">Share an image to this app to begin.</string>
     <string name="empty_state_description">Hello ImageShare. Share an image to this app to begin.</string>
     <string name="pick_from_gallery">Pick from gallery</string>
+    <string name="open_documents_button">Open documents (advanced)</string>
+    <string name="open_documents_tooltip">Open files via Files app; can be reopened later</string>
+    <string name="recents_section_title">Recents</string>
+    <string name="recents_remove_a11y">Remove from recents</string>
+    <string name="recents_empty">No recent files yet</string>
     <string name="process_and_share">Process &amp; share</string>
     <string name="process_and_share_description">Process and share</string>
     <string name="cancel_batch">Cancel</string>

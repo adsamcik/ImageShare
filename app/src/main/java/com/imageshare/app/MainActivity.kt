@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
     private fun sweepCachesOnStart() {
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching {
+                AppContainer.persistableUriRegistry.reconcile()
                 AppContainer.sharedIntakeStager.sweep()
                 AppContainer.outputStore.sweep()
             }.onFailure { Log.w(TAG, "Failed to sweep shared caches", it) }
