@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.baselineprofile) apply false
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.detekt) apply false
+    alias(libs.plugins.ksp) apply false
 }
 
 subprojects {

@@ -193,6 +193,7 @@ private fun formatLabel(format: EncodeFormat): String = when (format) {
     EncodeFormat.PNG -> stringResource(R.string.output_format_png)
     EncodeFormat.WEBP_LOSSY -> stringResource(R.string.output_format_webp_lossy)
     EncodeFormat.WEBP_LOSSLESS -> stringResource(R.string.output_format_webp_lossless)
+    EncodeFormat.HEIF -> stringResource(R.string.output_format_heif)
 }
 
 @Composable

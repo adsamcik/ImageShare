@@ -52,6 +52,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
@@ -107,6 +108,7 @@ fun MainScreen(viewModel: MainViewModel) {
     val selectedPreset by viewModel.selectedPreset.collectAsState()
     val effectivePreset by viewModel.effectivePreset.collectAsState()
     val customOverride by viewModel.customOverride.collectAsState()
+    val runInBackground by viewModel.runInBackground.collectAsState()
     val recentsUris by viewModel.recentsUris.collectAsState()
     val shownComparison by viewModel.shownComparison.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -188,6 +190,8 @@ fun MainScreen(viewModel: MainViewModel) {
         effectivePreset = effectivePreset,
         customOverride = customOverride,
         onCustomOverride = viewModel::onCustomOverride,
+        runInBackground = runInBackground,
+        onRunInBackgroundChanged = viewModel::onRunInBackgroundChanged,
         processingState = processingState,
         shownComparison = shownComparison,
         onPresetSelected = viewModel::onPresetSelected,
@@ -217,6 +221,8 @@ fun PresetSheet(
     effectivePreset: Preset? = selectedPreset,
     customOverride: MainViewModel.CustomOverride? = null,
     onCustomOverride: (MainViewModel.CustomOverride?) -> Unit = {},
+    runInBackground: Boolean = false,
+    onRunInBackgroundChanged: (Boolean) -> Unit = {},
     processingState: ProcessingState,
     shownComparison: ComparisonState? = null,
     onPresetSelected: (String) -> Unit,
@@ -286,6 +292,7 @@ fun PresetSheet(
                     } else {
                         SourcesSection(sources)
                         PresetsSection(presets, selectedPreset, onPresetSelected)
+                        AdvancedSection(runInBackground, onRunInBackgroundChanged)
                         effectivePreset?.let { PresetSummary(it) }
                         selectedPreset?.let {
                             Text(stringResource(R.string.resize_section_title), style = MaterialTheme.typography.titleMedium)
@@ -347,6 +354,30 @@ fun PresetSheet(
             onSwitchToPng = { onAlphaConflictStrategy(AlphaConflictStrategy.SwitchToPng) },
             onSkip = onSkip,
         )
+    }
+}
+
+@Composable
+private fun AdvancedSection(
+    runInBackground: Boolean,
+    onRunInBackgroundChanged: (Boolean) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.advanced_section_title), style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.run_in_background))
+                Text(
+                    text = stringResource(R.string.run_in_background_description),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = runInBackground, onCheckedChange = onRunInBackgroundChanged)
+        }
     }
 }
 
@@ -835,6 +866,7 @@ private fun formatLabel(format: EncodeFormat, accessible: Boolean = false): Stri
     EncodeFormat.WEBP_LOSSLESS -> {
         stringResource(if (accessible) R.string.output_format_webp_lossless_accessible else R.string.output_format_webp_lossless)
     }
+    EncodeFormat.HEIF -> stringResource(if (accessible) R.string.output_format_heif_accessible else R.string.output_format_heif)
 }
 
 @Composable

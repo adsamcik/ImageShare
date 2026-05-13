@@ -4,7 +4,11 @@ package com.imageshare.app
 
 import android.content.Intent
 import android.net.Uri
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.imageshare.app.data.BatchManifestDao
+import com.imageshare.app.data.ImageShareDatabase
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.saving.PersistentSaver
 import com.imageshare.core.io.MediaStoreSaver
@@ -231,8 +235,33 @@ class MainViewModelTest {
         assertEquals(null, viewModel.shownComparison.value)
     }
 
+    @Test
+    fun heuristicUsesWorkManagerForLargeBatches() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
+
+        assertTrue(viewModel.shouldRunWithWorkManager(LARGE_BATCH_THRESHOLD, runInBackground = false))
+    }
+
+    @Test
+    fun heuristicUsesInActivityForSmallBatchWhenToggleOff() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
+
+        assertEquals(false, viewModel.shouldRunWithWorkManager(LARGE_BATCH_THRESHOLD - 1, runInBackground = false))
+    }
+
+    @Test
+    fun heuristicUsesWorkManagerWhenBackgroundToggleOn() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
+
+        assertTrue(viewModel.shouldRunWithWorkManager(1, runInBackground = true))
+    }
+
     private fun viewModel(
         context: android.content.Context,
+        scheduler: BatchWorkScheduler = FakeBatchWorkScheduler(),
         result: suspend (SourceItem, Preset, String) -> PresetPipeline.Result,
     ): MainViewModel = MainViewModel(
         appContext = context,
@@ -242,7 +271,14 @@ class MainViewModelTest {
         sharedIntakeRepositoryFactory = { _, _ -> FakeSharedIntakeRepository(listOf(source)) },
         batchOrchestrator = BatchOrchestrator(FakePipelineRunner(result), mainDispatcherRule.dispatcher),
         persistableUriRegistry = persistableUriRegistry(context),
+        batchManifestDao = batchManifestDao(),
+        batchWorkScheduler = scheduler,
     )
+
+    private fun batchManifestDao(): BatchManifestDao = Room.inMemoryDatabaseBuilder(
+        ApplicationProvider.getApplicationContext(),
+        ImageShareDatabase::class.java,
+    ).allowMainThreadQueries().build().batchManifestDao()
 
     private fun persistableUriRegistry(context: android.content.Context): PersistableUriRegistry {
         val file = File(context.cacheDir, "main-view-model-${System.nanoTime()}.preferences_pb")
@@ -308,4 +344,18 @@ private class FakePresetRepository : PresetRepository {
 private class FakeSharedIntakeRepository(private val sources: List<SourceItem>) : SharedIntakeRepository {
     override suspend fun stage(jobId: String, uris: List<Uri>): List<SourceItem> = sources
     override suspend fun sweep() = Unit
+}
+
+private class FakeBatchWorkScheduler : BatchWorkScheduler {
+    val enqueued = mutableListOf<String>()
+
+    override fun enqueue(jobId: String, presetId: String, customOverrideJson: String?): Flow<BatchWorkStatus> {
+        enqueued += jobId
+        return flowOf(BatchWorkStatus(BatchWorkState.Succeeded))
+    }
+
+    override fun observe(jobId: String): Flow<BatchWorkStatus> =
+        flowOf(BatchWorkStatus(BatchWorkState.Succeeded))
+
+    override fun cancel(jobId: String) = Unit
 }

@@ -209,6 +209,7 @@ internal fun mimeForFormat(format: EncodeFormat): String = when (format) {
     EncodeFormat.WEBP_LOSSY,
     EncodeFormat.WEBP_LOSSLESS,
     -> "image/webp"
+    EncodeFormat.HEIF -> "image/heif"
 }
 
 internal fun extensionForFormat(format: EncodeFormat): String = when (format) {
@@ -217,6 +218,7 @@ internal fun extensionForFormat(format: EncodeFormat): String = when (format) {
     EncodeFormat.WEBP_LOSSY,
     EncodeFormat.WEBP_LOSSLESS,
     -> "webp"
+    EncodeFormat.HEIF -> "heif"
 }
 
 internal fun outputFilename(displayName: String?, jobId: String, format: EncodeFormat): String {

@@ -58,10 +58,12 @@
     <string name="output_format_png">PNG</string>
     <string name="output_format_webp_lossy">WebP (lossy)</string>
     <string name="output_format_webp_lossless">WebP (lossless)</string>
+    <string name="output_format_heif">HEIF</string>
     <string name="output_format_jpeg_accessible">J P E G</string>
     <string name="output_format_png_accessible">P N G</string>
     <string name="output_format_webp_lossy_accessible">WebP lossy</string>
     <string name="output_format_webp_lossless_accessible">WebP lossless</string>
+    <string name="output_format_heif_accessible">H E I F</string>
     <string name="alpha_conflict_title">Transparency detected</string>
     <string name="alpha_use_white">Use white background</string>
     <string name="alpha_switch_png">Switch to PNG for those</string>
@@ -112,4 +114,11 @@
     <string name="save_status_cancelled">Save cancelled.</string>
     <string name="save_status_single_done">Saved 1 image (%s).</string>
     <string name="save_status_failed">Save failed.</string>
+    <string name="advanced_section_title">Advanced</string>
+    <string name="run_in_background">Run in background</string>
+    <string name="run_in_background_description">Use a foreground notification so larger batches keep running if you leave the app.</string>
+    <string name="batch_channel_name">Batch processing</string>
+    <string name="batch_channel_description">Progress for image processing batches.</string>
+    <string name="batch_notification_title">Processing images</string>
+    <string name="batch_notification_text">Processed %1$d of %2$d images</string>
 </resources>

@@ -9,6 +9,14 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.Observer
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import com.imageshare.app.data.BatchManifestDao
+import com.imageshare.app.data.BatchManifestEntity
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.saving.PersistentSaver
 import com.imageshare.core.io.MediaStoreSaver
@@ -18,7 +26,12 @@ import com.imageshare.core.io.PersistableUriRegistry
 import com.imageshare.core.io.ShareLauncher
 import com.imageshare.core.io.SharedIntakeStager
 import com.imageshare.core.io.SourceItem
+import com.imageshare.core.io.sourceItemFromPersistedUriString
+import com.imageshare.core.io.toPersistedUriString
 import com.imageshare.core.processing.EncodeError
+import com.imageshare.core.processing.EncodeFormat
+import com.imageshare.app.work.BatchProcessWorker
+import com.imageshare.app.work.toWorkerJson
 import com.imageshare.feature.preset.AlphaFallback
 import com.imageshare.feature.preset.DefaultPresets
 import com.imageshare.feature.preset.OutputFormat
@@ -29,16 +42,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.UUID
 
 class MainViewModel(
     private val appContext: Context,
@@ -49,6 +66,8 @@ class MainViewModel(
     private val sharedIntakeRepositoryFactory: (ContentResolver, File) -> SharedIntakeRepository = ::AndroidSharedIntakeRepository,
     private val batchOrchestrator: BatchOrchestrator = AppContainer.batchOrchestrator,
     private val persistableUriRegistry: PersistableUriRegistry = AppContainer.persistableUriRegistry,
+    private val batchManifestDao: BatchManifestDao = AppContainer.batchManifestDao,
+    private val batchWorkScheduler: BatchWorkScheduler = WorkManagerBatchWorkScheduler(appContext),
 ) : ViewModel() {
     private val sharedSources = MutableStateFlow<List<SourceItem>>(emptyList())
     private val pickedSources = MutableStateFlow<List<SourceItem>>(emptyList())
@@ -59,7 +78,10 @@ class MainViewModel(
     private val mutableSaveStatus = MutableStateFlow<SaveStatus>(SaveStatus.Idle)
     private val _shownComparison = MutableStateFlow<ComparisonState?>(null)
     private val _customOverride = MutableStateFlow<CustomOverride?>(null)
+    private val _runInBackground = MutableStateFlow(false)
     private var currentBatchJob: Job? = null
+    private var activeBatch: ActiveBatch? = null
+    private var activeWorkJobId: String? = null
 
     val presets: StateFlow<List<Preset>> = presetRepository.observePresets()
         .stateIn(viewModelScope, SharingStarted.Eagerly, DefaultPresets.ALL)
@@ -72,6 +94,7 @@ class MainViewModel(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val customOverride: StateFlow<CustomOverride?> = _customOverride.asStateFlow()
+    val runInBackground: StateFlow<Boolean> = _runInBackground.asStateFlow()
 
     val effectivePreset: StateFlow<Preset?> = combine(selectedPreset, customOverride) { base, override ->
         if (base == null) {
@@ -96,6 +119,10 @@ class MainViewModel(
     val saveStatus: StateFlow<SaveStatus> = mutableSaveStatus.asStateFlow()
     val shownComparison: StateFlow<ComparisonState?> = _shownComparison.asStateFlow()
 
+    init {
+        reattachToBackgroundBatch()
+    }
+
     fun onPresetSelected(presetId: String) {
         viewModelScope.launch {
             presetRepository.setDefaultPresetId(presetId)
@@ -104,6 +131,10 @@ class MainViewModel(
 
     fun onCustomOverride(override: CustomOverride?) {
         _customOverride.value = override
+    }
+
+    fun onRunInBackgroundChanged(enabled: Boolean) {
+        _runInBackground.value = enabled
     }
 
     fun onPickFromGallery() = Unit
@@ -144,15 +175,33 @@ class MainViewModel(
         val currentSources = sources.value
         if (currentSources.isEmpty() || mutableProcessingState.value is ProcessingState.Running) return
         val preset = effectivePreset.value ?: return
-        startBatch(currentSources, preset)
+        val jobId = newJobId()
+        if (shouldRunWithWorkManager(currentSources.size, _runInBackground.value)) {
+            startWorkManagerBatch(jobId, currentSources, preset)
+        } else {
+            startBatch(currentSources, preset, jobId = jobId)
+        }
     }
 
     fun onCancelBatch() {
         val partial = currentSuccessfulResults()
+        activeWorkJobId?.let { batchWorkScheduler.cancel(it) }
+        activeWorkJobId = null
         currentBatchJob?.cancel()
         currentBatchJob = null
+        activeBatch = null
         mutableProcessingState.value = ProcessingState.Cancelled(partial)
     }
+
+    fun onAppBackgrounded() {
+        val batch = activeBatch ?: return
+        if (activeWorkJobId != null) return
+        val running = mutableProcessingState.value as? ProcessingState.Running ?: return
+        startWorkManagerBatch(batch.jobId, batch.sources, batch.preset, running.progress)
+    }
+
+    fun shouldRunWithWorkManager(sourceCount: Int, runInBackground: Boolean): Boolean =
+        sourceCount >= LARGE_BATCH_THRESHOLD || runInBackground
 
     fun onSaveCopy() {
         val results = (processingState.value as? ProcessingState.Done)
@@ -253,17 +302,120 @@ class MainViewModel(
         pendingSources: List<SourceItem>,
         preset: Preset,
         retainedResults: List<PresetPipeline.Result> = emptyList(),
+        jobId: String = newJobId(),
     ) {
         currentBatchJob?.cancel()
+        activeBatch = ActiveBatch(jobId, pendingSources, preset)
         currentBatchJob = viewModelScope.launch {
             try {
-                val results = processSources(pendingSources, preset, newJobId())
+                val results = processSources(pendingSources, preset, jobId)
                 finishProcessing(retainedResults + results)
             } finally {
                 if (currentBatchJob === coroutineContext[Job]) {
                     currentBatchJob = null
+                    activeBatch = null
                 }
             }
+        }
+    }
+
+    private fun startWorkManagerBatch(
+        jobId: String,
+        pendingSources: List<SourceItem>,
+        preset: Preset,
+        currentProgress: BatchOrchestrator.BatchProgress? = null,
+    ) {
+        currentBatchJob?.cancel()
+        currentBatchJob = null
+        activeBatch = ActiveBatch(jobId, pendingSources, preset)
+        activeWorkJobId = jobId
+        currentBatchJob = viewModelScope.launch {
+            seedManifest(jobId, pendingSources, currentProgress)
+            batchWorkScheduler.enqueue(jobId, preset.id, customOverride.value?.toWorkerJson())
+                .collect { status -> updateFromWorkStatus(jobId, status) }
+        }
+    }
+
+    private suspend fun seedManifest(
+        jobId: String,
+        pendingSources: List<SourceItem>,
+        currentProgress: BatchOrchestrator.BatchProgress?,
+    ) = withContext(Dispatchers.IO) {
+        val progressByUri = currentProgress?.items?.associateBy { it.source.uri }
+        batchManifestDao.upsert(
+            pendingSources.mapIndexed { idx, src ->
+                val state = progressByUri?.get(src.uri)?.state
+                BatchManifestEntity(
+                    jobId = jobId,
+                    sourceIndex = idx,
+                    sourceUriString = src.toPersistedUriString(),
+                    state = state.manifestState(),
+                    storedFilePath = (state as? BatchOrchestrator.ItemState.Done)
+                        ?.result
+                        ?.let { it as? PresetPipeline.Result.Success }
+                        ?.stored
+                        ?.file
+                        ?.absolutePath,
+                    outputMimeType = (state as? BatchOrchestrator.ItemState.Done)
+                        ?.result
+                        ?.let { it as? PresetPipeline.Result.Success }
+                        ?.stored
+                        ?.mimeType,
+                    errorMessage = (state as? BatchOrchestrator.ItemState.Done)
+                        ?.result
+                        ?.let { it as? PresetPipeline.Result.Failure }
+                        ?.cause
+                        ?.message,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            },
+        )
+    }
+
+    private suspend fun updateFromWorkStatus(jobId: String, status: BatchWorkStatus) {
+        val manifest = withContext(Dispatchers.IO) { batchManifestDao.forJob(jobId) }
+        mutableProcessingState.value = ProcessingState.Running(manifest.toProgress(jobId))
+        when (status.state) {
+            BatchWorkState.Running,
+            BatchWorkState.Enqueued,
+            -> Unit
+            BatchWorkState.Succeeded -> {
+                activeWorkJobId = null
+                currentBatchJob = null
+                activeBatch = null
+                finishProcessing(manifest.toResults())
+            }
+            BatchWorkState.Failed,
+            BatchWorkState.Cancelled,
+            -> {
+                activeWorkJobId = null
+                currentBatchJob = null
+                activeBatch = null
+                mutableProcessingState.value = ProcessingState.Cancelled(
+                    manifest.toResults().filterIsInstance<PresetPipeline.Result.Success>(),
+                )
+            }
+        }
+    }
+
+    private fun reattachToBackgroundBatch() {
+        viewModelScope.launch {
+            val pendingJobId = withContext(Dispatchers.IO) { batchManifestDao.pendingJobIds().firstOrNull() }
+            if (pendingJobId != null) {
+                activeWorkJobId = pendingJobId
+                currentBatchJob = launch {
+                    batchWorkScheduler.observe(pendingJobId).collect { status -> updateFromWorkStatus(pendingJobId, status) }
+                }
+                return@launch
+            }
+
+            val completedJobId = withContext(Dispatchers.IO) {
+                batchManifestDao.jobIds().firstOrNull { id ->
+                    batchManifestDao.forJob(id).all { it.state != BatchProcessWorker.STATE_PENDING }
+                }
+            } ?: return@launch
+            val results = withContext(Dispatchers.IO) { batchManifestDao.forJob(completedJobId).toResults() }
+            if (results.isNotEmpty()) finishProcessing(results)
         }
     }
 
@@ -380,6 +532,167 @@ private class AndroidSharedIntakeRepository(
 
 private fun PresetPipeline.Result.Failure.isAlphaConflict(): Boolean = cause is EncodeError.AlphaConflict
 
+private fun BatchOrchestrator.ItemState?.manifestState(): String = when (this) {
+    is BatchOrchestrator.ItemState.Done -> when (result) {
+        is PresetPipeline.Result.Success -> BatchProcessWorker.STATE_DONE
+        is PresetPipeline.Result.Failure -> BatchProcessWorker.STATE_FAILED
+    }
+    BatchOrchestrator.ItemState.Cancelled -> BatchProcessWorker.STATE_CANCELLED
+    BatchOrchestrator.ItemState.Pending,
+    is BatchOrchestrator.ItemState.Running,
+    null,
+    -> BatchProcessWorker.STATE_PENDING
+}
+
+private fun List<BatchManifestEntity>.toProgress(jobId: String): BatchOrchestrator.BatchProgress =
+    BatchOrchestrator.BatchProgress(
+        jobId = jobId,
+        items = sortedBy { it.sourceIndex }.map { entity ->
+            BatchOrchestrator.BatchProgress.Item(
+                source = sourceItemFromPersistedUriString(entity.sourceUriString),
+                state = entity.toItemState(),
+            )
+        },
+    )
+
+private fun BatchManifestEntity.toItemState(): BatchOrchestrator.ItemState = when (state) {
+    BatchProcessWorker.STATE_DONE,
+    BatchProcessWorker.STATE_FAILED,
+    -> BatchOrchestrator.ItemState.Done(toResult())
+    BatchProcessWorker.STATE_CANCELLED -> BatchOrchestrator.ItemState.Cancelled
+    else -> BatchOrchestrator.ItemState.Pending
+}
+
+private fun List<BatchManifestEntity>.toResults(): List<PresetPipeline.Result> =
+    sortedBy { it.sourceIndex }
+        .filter { it.state == BatchProcessWorker.STATE_DONE || it.state == BatchProcessWorker.STATE_FAILED }
+        .map { it.toResult() }
+
+private fun BatchManifestEntity.toResult(): PresetPipeline.Result {
+    val source = sourceItemFromPersistedUriString(sourceUriString)
+    if (state == BatchProcessWorker.STATE_DONE && storedFilePath != null) {
+        val file = File(storedFilePath)
+        val mimeType = outputMimeType ?: "image/jpeg"
+        return PresetPipeline.Result.Success(
+            stored = com.imageshare.core.io.OutputStore.StoredItem(
+                jobId = jobId,
+                file = file,
+                filename = file.name,
+                sizeBytes = file.length(),
+                mimeType = mimeType,
+            ),
+            before = source,
+            finalWidth = source.width ?: 0,
+            finalHeight = source.height ?: 0,
+            format = mimeType.toEncodeFormat(),
+        )
+    }
+    return PresetPipeline.Result.Failure(
+        before = source,
+        cause = EncodeError.Invalid(errorMessage ?: "Background processing failed"),
+        step = PresetPipeline.Step.Storing,
+    )
+}
+
+private fun String.toEncodeFormat(): EncodeFormat = when {
+    contains("png", ignoreCase = true) -> EncodeFormat.PNG
+    contains("webp", ignoreCase = true) -> EncodeFormat.WEBP_LOSSY
+    else -> EncodeFormat.JPEG
+}
+
+private data class ActiveBatch(
+    val jobId: String,
+    val sources: List<SourceItem>,
+    val preset: Preset,
+)
+
+interface BatchWorkScheduler {
+    fun enqueue(jobId: String, presetId: String, customOverrideJson: String?): Flow<BatchWorkStatus>
+    fun observe(jobId: String): Flow<BatchWorkStatus>
+    fun cancel(jobId: String)
+}
+
+data class BatchWorkStatus(
+    val state: BatchWorkState,
+    val completed: Int = 0,
+    val total: Int = 0,
+)
+
+enum class BatchWorkState { Enqueued, Running, Succeeded, Failed, Cancelled }
+
+private class WorkManagerBatchWorkScheduler(
+    private val context: Context,
+) : BatchWorkScheduler {
+    private val workManager: WorkManager = WorkManager.getInstance(context)
+
+    override fun enqueue(
+        jobId: String,
+        presetId: String,
+        customOverrideJson: String?,
+    ): Flow<BatchWorkStatus> {
+        val request = OneTimeWorkRequestBuilder<BatchProcessWorker>()
+            .setInputData(
+                workDataOf(
+                    BatchProcessWorker.KEY_JOB_ID to jobId,
+                    BatchProcessWorker.KEY_PRESET_ID to presetId,
+                    BatchProcessWorker.KEY_CUSTOM_OVERRIDE_JSON to customOverrideJson.orEmpty(),
+                ),
+            )
+            .addTag(BatchProcessWorker.uniqueWorkName(jobId))
+            .build()
+        workManager.enqueueUniqueWork(
+            BatchProcessWorker.uniqueWorkName(jobId),
+            ExistingWorkPolicy.REPLACE,
+            request,
+        )
+        return workInfoFlow(request.id)
+    }
+
+    override fun observe(jobId: String): Flow<BatchWorkStatus> = callbackFlow {
+        val liveData = workManager.getWorkInfosForUniqueWorkLiveData(BatchProcessWorker.uniqueWorkName(jobId))
+        val observer = Observer<List<WorkInfo>> { infos ->
+            val latest = infos.firstOrNull()
+            if (latest != null) {
+                trySend(latest.toBatchWorkStatus())
+                if (latest.state.isFinished) close()
+            }
+        }
+        liveData.observeForever(observer)
+        awaitClose { liveData.removeObserver(observer) }
+    }
+
+    override fun cancel(jobId: String) {
+        workManager.cancelUniqueWork(BatchProcessWorker.uniqueWorkName(jobId))
+    }
+
+    private fun workInfoFlow(id: UUID): Flow<BatchWorkStatus> = callbackFlow {
+        val liveData = workManager.getWorkInfoByIdLiveData(id)
+        val observer = Observer<WorkInfo?> { workInfo ->
+            if (workInfo != null) {
+                trySend(workInfo.toBatchWorkStatus())
+                if (workInfo.state.isFinished) close()
+            }
+        }
+        liveData.observeForever(observer)
+        awaitClose { liveData.removeObserver(observer) }
+    }
+}
+
+private fun WorkInfo.toBatchWorkStatus(): BatchWorkStatus = BatchWorkStatus(
+    state = when (state) {
+        WorkInfo.State.ENQUEUED,
+        WorkInfo.State.BLOCKED,
+        -> BatchWorkState.Enqueued
+        WorkInfo.State.RUNNING -> BatchWorkState.Running
+        WorkInfo.State.SUCCEEDED -> BatchWorkState.Succeeded
+        WorkInfo.State.FAILED -> BatchWorkState.Failed
+        WorkInfo.State.CANCELLED -> BatchWorkState.Cancelled
+    },
+    completed = progress.getInt(BatchProcessWorker.KEY_PROGRESS_COMPLETED, 0),
+    total = progress.getInt(BatchProcessWorker.KEY_PROGRESS_TOTAL, 0),
+)
+
 private fun newJobId(): String = "share-${System.currentTimeMillis()}-${(0 until SHARE_RANDOM_BOUND).random()}"
 
+const val LARGE_BATCH_THRESHOLD = 10
 private const val SHARE_RANDOM_BOUND = 10_000

@@ -33,6 +33,13 @@ class MainActivity : ComponentActivity() {
         handleShareIntent(intent)
     }
 
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            viewModel.onAppBackgrounded()
+        }
+    }
+
     private fun handleShareIntent(intent: Intent?) {
         val sharedUris = intent.extractImageShareUris()
         if (sharedUris.isEmpty()) return
@@ -49,6 +56,7 @@ class MainActivity : ComponentActivity() {
                 AppContainer.persistableUriRegistry.reconcile()
                 AppContainer.sharedIntakeStager.sweep()
                 AppContainer.outputStore.sweep()
+                AppContainer.batchManifestDao.purgeOlderThan(System.currentTimeMillis() - MANIFEST_SWEEP_AGE_MS)
             }.onFailure { Log.w(TAG, "Failed to sweep shared caches", it) }
         }
     }
@@ -81,4 +89,5 @@ private fun Intent.getParcelableArrayListExtraCompat(name: String): ArrayList<Ur
     }
 
 private const val SHARE_RANDOM_BOUND = 10_000
+private const val MANIFEST_SWEEP_AGE_MS = 7L * 24L * 60L * 60L * 1_000L
 private const val TAG = "MainActivity"
