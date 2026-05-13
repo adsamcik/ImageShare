@@ -134,4 +134,5 @@
     <string name="license_label_apache_2">Apache License 2.0</string>
     <string name="license_label_epl_1">Eclipse Public License 1.0</string>
     <string name="license_label_mit">MIT License</string>
+    <string name="license_label_bsd3">BSD 3-Clause License</string>
 </resources>

@@ -3,18 +3,65 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
+val skipNativeJpegBuild = providers.gradleProperty("imageshare.skipNativeJpegBuild")
+    .map(String::toBoolean)
+    .getOrElse(false)
+val configureNativeJpegBuild = !skipNativeJpegBuild && gradle.startParameter.taskNames.let { requestedTasks ->
+    requestedTasks.isEmpty() || requestedTasks.any { taskName ->
+        val normalized = taskName.lowercase()
+        !normalized.contains("lint") &&
+            !normalized.contains("detekt") &&
+            !normalized.contains("unittest") &&
+            normalized != "test" &&
+            !normalized.endsWith(":test")
+    }
+}
+
 android {
     namespace = "com.imageshare.core.processing"
     compileSdk = 36
+    ndkVersion = libs.versions.ndk.get()
 
     defaultConfig {
         minSdk = 29
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "ENABLE_NATIVE_JPEG", "true")
+
+        if (configureNativeJpegBuild) {
+            externalNativeBuild {
+                cmake {
+                    cppFlags += "-std=c++17"
+                    arguments += listOf(
+                        "-DANDROID_STL=c++_static",
+                        "-DCMAKE_BUILD_TYPE=Release",
+                        "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
+                    )
+                }
+            }
+        }
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+        }
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    if (configureNativeJpegBuild) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+                version = "3.22.1"
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
+        prefab = true
     }
 }
 

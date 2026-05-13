@@ -44,12 +44,18 @@ class Encoder {
         val output = ByteArrayOutputStream()
 
         try {
-            val success = bitmapToEncode.compress(format.toCompressFormat(), effectiveQuality, output)
-            if (!success) {
-                throw IOException("Bitmap.compress returned false")
+            val encoded = if (format == EncodeFormat.JPEG) {
+                NativeJpegEncoder.encode(bitmapToEncode, effectiveQuality) ?: encodeWithPlatform(
+                    bitmapToEncode,
+                    format,
+                    effectiveQuality,
+                    output,
+                )
+            } else {
+                encodeWithPlatform(bitmapToEncode, format, effectiveQuality, output)
             }
             return EncodeResult(
-                bytes = output.toByteArray(),
+                bytes = encoded,
                 width = bitmapToEncode.width,
                 height = bitmapToEncode.height,
                 format = format,
@@ -160,6 +166,19 @@ class Encoder {
 
     private fun createHeifTempFile(): File =
         Files.createTempFile(TEMP_FILE_PREFIX, TEMP_FILE_SUFFIX).toFile()
+
+    private fun encodeWithPlatform(
+        bitmap: Bitmap,
+        format: EncodeFormat,
+        quality: Int,
+        output: ByteArrayOutputStream,
+    ): ByteArray {
+        val success = bitmap.compress(format.toCompressFormat(), quality, output)
+        if (!success) {
+            throw IOException("Bitmap.compress returned false")
+        }
+        return output.toByteArray()
+    }
 
     private companion object {
         private const val MIN_QUALITY = 1

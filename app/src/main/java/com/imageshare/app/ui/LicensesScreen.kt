@@ -136,4 +136,10 @@ private val LICENSES = listOf(
         R.string.license_label_mit,
         "https://robolectric.org/",
     ),
+    LicenseEntry(
+        "libjpeg-turbo",
+        "Copyright 1991-2024 Thomas G. Lane, D. R. Commander, and contributors",
+        R.string.license_label_bsd3,
+        "https://github.com/libjpeg-turbo/libjpeg-turbo",
+    ),
 )

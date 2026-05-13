@@ -38,4 +38,12 @@ Copyright (c) 2010-2026 Robolectric contributors
 Licensed under the MIT License
 https://robolectric.org/
 
+libjpeg-turbo
+Copyright (c) 1991-1998, Thomas G. Lane
+Copyright (c) 2009-2024, D. R. Commander and contributors
+Licensed under the Modified BSD License (BSD 3-Clause)
+https://github.com/libjpeg-turbo/libjpeg-turbo
+
+This product makes use of code derived from the IJG JPEG library.
+
 For the full text of each license, see THIRD_PARTY_LICENSES.
