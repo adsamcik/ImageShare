@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.test)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -14,6 +15,18 @@ android {
     }
 
     targetProjectPath = ":app"
+
+    testOptions {
+        managedDevices {
+            devices {
+                create<com.android.build.api.dsl.ManagedVirtualDevice>("pixel6Api31") {
+                    device = "Pixel 6"
+                    apiLevel = 31
+                    systemImageSource = "aosp"
+                }
+            }
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -30,6 +43,11 @@ android {
             matchingFallbacks += listOf("release")
         }
     }
+}
+
+baselineProfile {
+    managedDevices += "pixel6Api31"
+    useConnectedDevices = true
 }
 
 kotlin {

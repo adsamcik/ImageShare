@@ -57,3 +57,9 @@ Every PR runs the unit + lint + detekt + instrumented-compile suite via `.github
 - Benchmarks do not run in CI because stable numbers require a dedicated real device with low background noise.
 - Commit captured medians to `benchmarks/baseline.json`.
 - Use a Pixel 4a on API 31 as the reference midrange comparison device unless Phase 4 chooses a newer baseline.
+
+### Baseline Profiles
+- Generate committed startup profiles with `./gradlew :app:generateBaselineProfile`; this uses the configured managed Pixel 6 API 31 device. With an already-connected device, `./gradlew :benchmark:macro:connectedBenchmarkAndroidTest` can be used as a fallback.
+- The generated profile is written to `app/src/main/baseline-prof.txt` and is bundled into release artifacts by the AndroidX Baseline Profile plugin.
+- Baseline Profile generation is not run in CI because managed devices require emulator boot, which is slow and flaky on Ubuntu runners. Commit the generated profile and refresh it manually.
+- Regenerate after major UI changes, before releases, or when cold-start metrics regress by more than 10%.
