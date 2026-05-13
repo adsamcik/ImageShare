@@ -17,8 +17,13 @@ import com.imageshare.core.io.SourceItem
 import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.feature.preset.DefaultPresets
 import com.imageshare.feature.preset.Preset
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -93,6 +98,37 @@ class BatchProcessWorkerTest {
         val rows = database.batchManifestDao().forJob(JOB_ID)
         assertTrue(outcome.exceptionOrNull() is CancellationException)
         assertEquals(2, rows.count { it.state == BatchProcessWorker.STATE_CANCELLED })
+    }
+
+    @Test
+    fun cancelledMidBatchFlipsPendingRowsToCancelled() = runTest {
+        seedManifest()
+        val item1Started = CompletableDeferred<Unit>()
+        AppContainer.overrideForTests(
+            batchManifestDao = database.batchManifestDao(),
+            batchOrchestrator = BatchOrchestrator(
+                FakePipeline(context) { source, preset, jobId ->
+                    when (source.uri.lastPathSegment) {
+                        "1" -> {
+                            item1Started.complete(Unit)
+                            delay(60_000)
+                        }
+                    }
+                    success(context, source, preset, jobId)
+                },
+                StandardTestDispatcher(testScheduler),
+            ),
+            presetRepository = WorkerPresetRepository,
+        )
+
+        val workJob = async(Dispatchers.IO) { worker().doWork() }
+        item1Started.await()
+
+        workJob.cancelAndJoin()
+
+        val rows = database.batchManifestDao().forJob(JOB_ID)
+        assertEquals(BatchProcessWorker.STATE_CANCELLED, rows[1].state)
+        assertEquals(BatchProcessWorker.STATE_CANCELLED, rows[2].state)
     }
 
     private suspend fun seedManifest() {
