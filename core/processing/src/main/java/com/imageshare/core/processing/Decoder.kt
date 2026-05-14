@@ -131,7 +131,7 @@ class Decoder(private val resolver: ContentResolver) {
     }
 
     private fun readHasAlphaHint(uri: Uri, buffered: BufferedInputStream, mimeType: String?): Boolean {
-        if (mimeType !in AlphaCapableMimeTypes || mimeType != "image/png") {
+        if (!shouldProbeAlphaHeader(mimeType)) {
             return false
         }
 
@@ -184,12 +184,6 @@ class Decoder(private val resolver: ContentResolver) {
         private const val PROBE_MARK_LIMIT_BYTES = 64 * 1024
         private const val PngHeaderSize = 26
         private const val PngColorTypeOffset = 25
-        private val AlphaCapableMimeTypes = setOf(
-            "image/png",
-            "image/webp",
-            "image/heif",
-            "image/avif",
-        )
         private val AlphaPngColorTypes = setOf(4, 6)
     }
 }
@@ -293,6 +287,16 @@ private const val QUARTER_TURN_DEGREES = 90f
 private const val NEGATIVE_QUARTER_TURN_DEGREES = -90f
 private const val FLIP_AXIS = -1f
 private const val KEEP_AXIS = 1f
+
+private val AlphaCapableMimeTypes = setOf(
+    "image/png",
+    "image/webp",
+    "image/heif",
+    "image/avif",
+)
+
+internal fun shouldProbeAlphaHeader(mimeType: String?): Boolean =
+    mimeType in AlphaCapableMimeTypes && mimeType != "image/png"
 
 private val PngSignature = byteArrayOf(
     0x89.toByte(),

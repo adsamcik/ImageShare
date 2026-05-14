@@ -14,5 +14,6 @@
         <exclude domain="database" path="imageshare.db-wal" />
         <exclude domain="file" path="datastore/imageshare_uri_registry.preferences_pb" />
         <exclude domain="file" path="cache" />
+        <exclude domain="external" path="cache" />
     </device-transfer>
 </data-extraction-rules>

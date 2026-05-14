@@ -54,7 +54,7 @@ class BatchProcessWorker(
             runBatch(jobId, remaining, workerPreset, manifest.size)
             Result.success()
         } catch (error: CancellationException) {
-            withContext(NonCancellable) {
+            runNonCancellableCleanup("mark pending rows cancelled") {
                 markPendingCancelled(jobId)
             }
             throw error
@@ -85,7 +85,11 @@ class BatchProcessWorker(
         } finally {
             latestProgress
                 ?.takeIf { it != lastAppliedProgress }
-                ?.let { applyProgress(jobId, remaining, total, it) }
+                ?.let { progress ->
+                    runNonCancellableCleanup("apply final batch progress") {
+                        applyProgress(jobId, remaining, total, progress)
+                    }
+                }
         }
     }
 
@@ -112,6 +116,17 @@ class BatchProcessWorker(
 
     private suspend fun resolvePreset(presetId: String): Preset? =
         AppContainer.activePresetRepository.getPreset(presetId)
+
+    private suspend inline fun runNonCancellableCleanup(description: String, crossinline block: suspend () -> Unit) {
+        withContext(NonCancellable) {
+            try {
+                block()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                Log.w(TAG, "Unable to $description", error)
+            }
+        }
+    }
 
     private fun makeForegroundInfo(completed: Int, total: Int): ForegroundInfo {
         val title = applicationContext.getStringOrFallback(

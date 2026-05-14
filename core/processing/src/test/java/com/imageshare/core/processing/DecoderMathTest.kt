@@ -30,6 +30,19 @@ class DecoderMathTest {
     }
 
     @Test
+    fun alphaHeaderProbeOnlyRunsForNonPngAlphaCapableFormats() {
+        mapOf(
+            "image/png" to false,
+            "image/jpeg" to false,
+            "image/webp" to true,
+            "image/heif" to true,
+            "image/avif" to true,
+        ).forEach { (mimeType, expected) ->
+            assertEquals("mimeType=$mimeType", expected, shouldProbeAlphaHeader(mimeType))
+        }
+    }
+
+    @Test
     fun orientationMatrixMatchesExifConstants() {
         mapOf(
             ExifInterface.ORIENTATION_UNDEFINED to floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f),
