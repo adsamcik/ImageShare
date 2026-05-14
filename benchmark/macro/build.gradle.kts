@@ -19,9 +19,19 @@ android {
     testOptions {
         managedDevices {
             devices {
+                create<com.android.build.api.dsl.ManagedVirtualDevice>("pixel4aApi30") {
+                    device = "Pixel 4a"
+                    apiLevel = 30
+                    systemImageSource = "aosp"
+                }
                 create<com.android.build.api.dsl.ManagedVirtualDevice>("pixel6Api31") {
                     device = "Pixel 6"
                     apiLevel = 31
+                    systemImageSource = "aosp"
+                }
+                create<com.android.build.api.dsl.ManagedVirtualDevice>("pixel8Api34") {
+                    device = "Pixel 8"
+                    apiLevel = 34
                     systemImageSource = "aosp"
                 }
             }
@@ -46,7 +56,7 @@ android {
 }
 
 baselineProfile {
-    managedDevices += "pixel6Api31"
+    managedDevices += listOf("pixel4aApi30", "pixel6Api31", "pixel8Api34")
     useConnectedDevices = true
 }
 
@@ -65,7 +75,7 @@ dependencies {
 
 androidComponents {
     beforeVariants(selector().all()) { variant ->
-        variant.enable = variant.buildType == "benchmark"
+        variant.enable = variant.buildType == "benchmark" || variant.buildType == "debug"
     }
 }
 

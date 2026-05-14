@@ -55,14 +55,14 @@ Every PR runs the unit + lint + detekt + instrumented-compile suite via `.github
 - Microbenchmarks compile in CI and run manually on a connected physical device with `./gradlew :benchmark:micro:connectedReleaseAndroidTest`. Use a real device, not an emulator, for representative decode/resize/encode/metadata numbers.
 - Macrobenchmarks compile in CI and run manually with `./gradlew :benchmark:macro:connectedBenchmarkAndroidTest`. The macro test module targets the app release variant through its `benchmark` build type and signs the test APK with the debug signing config for local installability.
 - Benchmarks do not run in CI because stable numbers require a dedicated real device with low background noise.
-- Commit captured medians to `benchmarks/baseline.json`.
-- Use a Pixel 4a on API 31 as the reference midrange comparison device unless Phase 4 chooses a newer baseline.
+- Commit captured macro medians to the matching per-device entry in `benchmarks/baseline.json`.
+- Use the managed device keys in `benchmarks/baseline.json` (`pixel4aApi30`, `pixel6Api31`, `pixel8Api34`) when recording macrobenchmark baselines.
 
 ### Capture workflow
 1. Connect real Pixel devices that cover the target range: Pixel 4a plus Pixel 8 minimum.
 2. Run `./gradlew :benchmark:micro:connectedReleaseAndroidTest` and `./gradlew :benchmark:macro:connectedBenchmarkAndroidTest`.
 3. Find JSON outputs under `benchmark/micro/build/outputs/connected_android_test_additional_output/.../androidx.benchmark.json` and the matching macro output directory.
-4. Manually copy median values into `benchmarks/baseline.json`; a merge script can be added later if this becomes repetitive.
+4. Manually copy median macrobenchmark values into the matching `benchmarks/baseline.json` device entry; a merge script can be added later if this becomes repetitive.
 5. Commit `benchmarks/baseline.json` with the captured numbers.
 6. Record device profile details in the commit or release notes: model, API level, CPU governor, charging state, and thermal posture. Run on charger to reduce throttling noise.
 
