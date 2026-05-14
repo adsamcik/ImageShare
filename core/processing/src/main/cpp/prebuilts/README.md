@@ -30,13 +30,16 @@ Run once per ABI, then copy outputs into this directory.
 
 ## Until binaries are vendored
 
-`:core:processing:assembleDebug` fails with a clear CMake error pointing at the
-missing files. Runtime fallback remains in place through
-`NativeJpegEncoder.isAvailable() == false` whenever the native library is not
-packaged or cannot load.
+Native JPEG compilation defaults to **disabled** (the build property
+`imageshare.skipNativeJpegBuild` falls back to `true`). The build assembles
+cleanly without prebuilts and `Encoder` uses platform `Bitmap.compress(JPEG, …)`.
+Runtime fallback remains in place through `NativeJpegEncoder.isAvailable() ==
+false` whenever the native library is not packaged or cannot load.
 
-To temporarily disable native compilation entirely, run Gradle with
-`-Pimageshare.skipNativeJpegBuild=true` until binaries are vendored.
+To enable native JPEG, vendor the prebuilts listed above and set
+`imageshare.skipNativeJpegBuild=false` (in `gradle.properties` or on the CLI).
+With prebuilts missing and the flag flipped, `:core:processing:assembleDebug`
+fails with a clear CMake error pointing at the missing files.
 
 ## License compliance
 

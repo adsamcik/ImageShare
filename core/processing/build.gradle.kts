@@ -5,10 +5,10 @@ plugins {
 
 val skipNativeJpegBuild = providers.gradleProperty("imageshare.skipNativeJpegBuild")
     .map(String::toBoolean)
-    .getOrElse(false)
+    .getOrElse(true)
 val skipNativeAvifBuild = providers.gradleProperty("imageshare.skipNativeAvifBuild")
     .map(String::toBoolean)
-    .getOrElse(false)
+    .getOrElse(true)
 val configureNativeBuild = (!skipNativeJpegBuild || !skipNativeAvifBuild) && gradle.startParameter.taskNames.let { requestedTasks ->
     requestedTasks.isEmpty() || requestedTasks.any { taskName ->
         val normalized = taskName.lowercase()

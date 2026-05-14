@@ -6,6 +6,35 @@ path reversible: `Encoder` attempts `NativeJpegEncoder` only when the feature
 flag is enabled and the JNI library loads, then falls back to platform
 `Bitmap.compress(JPEG, ...)` on any load or encode failure.
 
+## v1.0 launch policy: native is opt-IN, defaults OFF
+
+After auditing `p4-decision-speculative`, both native paths default to **disabled**
+at the Gradle level (`imageshare.skipNativeJpegBuild=true`,
+`imageshare.skipNativeAvifBuild=true` as fallback values). This satisfies the
+plan's §4 gating policy — the speculative scope no longer ships as the build
+default — while preserving every byte of the scaffolding for future activation.
+
+A fresh clone running `./gradlew assembleDebug` therefore produces a
+Kotlin-only build with platform `Bitmap.compress` JPEG + platform
+`AvifWriter` (Android 14+) and no CMake/NDK steps. `BuildConfig.ENABLE_NATIVE_JPEG`
+and `ENABLE_NATIVE_AVIF` are both `false`, so `Encoder` skips the native dispatch
+branch at runtime as well.
+
+### Activation checklist
+
+To activate the native paths for a future release:
+
+1. Vendor the prebuilts listed in the next two sections.
+2. Set `imageshare.skipNativeJpegBuild=false` and/or
+   `imageshare.skipNativeAvifBuild=false` in `gradle.properties` (project- or
+   user-scoped) or pass them on the command line.
+3. Capture macrobenchmarks on real hardware (Pixel 4a, Pixel 6, Pixel 8) using
+   the new `pixel*Api*` ManagedVirtualDevices wired in `:benchmark:macro`.
+4. Compare median encode time, APK size, and battery impact against the
+   platform fallback. Native paths should ship only when benchmarks justify
+   the additional binary size and licensing complexity (see AOM Patent
+   License 1.0 implications for AVIF).
+
 ## Manual prerequisites
 
 The repository intentionally does not vendor libjpeg-turbo source or binaries.
@@ -22,11 +51,10 @@ toolchain. Follow libjpeg-turbo's `BUILDING.md` Android section and use NDK
 r26 or newer for 16-KB page-size compatibility; this repo currently targets the
 latest installed NDK, 29.0.14206865.
 
-Until those files are present, `:core:processing:assembleDebug` fails at CMake
-configuration with an actionable missing-prebuilt error. Quality-only tasks
-(`lint`, `detekt`, unit tests) skip native configuration so they remain usable
-before binaries are vendored. To validate Kotlin-only assembly, run Gradle with
-`-Pimageshare.skipNativeJpegBuild=true`.
+With `imageshare.skipNativeJpegBuild=false` and those files missing,
+`:core:processing:assembleDebug` fails at CMake configuration with an actionable
+missing-prebuilt error. The default (skip=true) path skips native configuration
+entirely so the project always builds out of the box.
 
 ## Reversibility
 
@@ -71,10 +99,10 @@ from https://aomedia.googlesource.com/aom/ for each Android ABI. This scaffold
 is encode-only, so it links libavif + aom; dav1d is not bundled because it is a
 decoder and can be deferred until decode support exists.
 
-Until those files are present, `:core:processing:assembleDebug` without opt-out
-flags fails at CMake configuration with an actionable missing-libavif error.
-Use `-Pimageshare.skipNativeAvifBuild=true` together with
-`-Pimageshare.skipNativeJpegBuild=true` for Kotlin-only assembly.
+Until those files are present and `imageshare.skipNativeAvifBuild=false` is
+set, `:core:processing:assembleDebug` does not attempt to compile libavif. The
+default (skip=true) skips native AVIF configuration. To opt in, vendor the
+prebuilts and set `imageshare.skipNativeAvifBuild=false`.
 
 ### AVIF size impact
 

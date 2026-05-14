@@ -27,5 +27,8 @@ Size warning: `libavif` plus `libaom` can add roughly 1-3 MB per ABI. App
 Bundle ABI splits help, but every user still downloads one ABI's native AVIF
 payload when the beta path is bundled.
 
-Use `-Pimageshare.skipNativeAvifBuild=true` until the prebuilts and real header
-are vendored.
+Native AVIF compilation defaults to **disabled** (the build property
+`imageshare.skipNativeAvifBuild` falls back to `true`). The build assembles
+without these prebuilts and `Encoder` uses platform `AvifWriter` on Android 14+
+(throwing `EncodeError.AvifUnavailable` on older devices). To enable native AVIF,
+vendor the prebuilts above and set `imageshare.skipNativeAvifBuild=false`.
