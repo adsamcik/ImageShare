@@ -29,11 +29,13 @@ import com.imageshare.feature.preset.ResizeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -52,6 +54,7 @@ import org.junit.runner.Description
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
 import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -257,6 +260,92 @@ class MainViewModelTest {
         val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
 
         assertTrue(viewModel.shouldRunWithWorkManager(1, runInBackground = true))
+    }
+
+    @Test
+    @Config(sdk = [30])
+    fun notificationPermissionPolicyNoOpsBeforeAndroid13AndEnqueuesBackgroundBatch() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val scheduler = FakeBatchWorkScheduler()
+        val viewModel = viewModel(context, scheduler) { before, preset, _ -> success(context, preset, before) }
+        var permissionRequests = 0
+        stage(viewModel, source)
+        viewModel.onRunInBackgroundChanged(true)
+        advanceUntilIdle()
+
+        viewModel.onProcessAndShareRequestingNotificationsIfNeeded(
+            postNotificationsGranted = false,
+            requestPostNotifications = { permissionRequests += 1 },
+        )
+        advanceUntilIdle()
+
+        assertEquals(0, permissionRequests)
+        assertEnqueuedEventually(scheduler)
+        assertEquals(false, viewModel.postNotificationsPermissionAskedThisSession)
+    }
+
+    @Test
+    @Config(sdk = [33])
+    fun grantedNotificationPermissionDoesNotPromptOrFlipAskedFlagAndEnqueuesBackgroundBatch() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val scheduler = FakeBatchWorkScheduler()
+        val viewModel = viewModel(context, scheduler) { before, preset, _ -> success(context, preset, before) }
+        var permissionRequests = 0
+        stage(viewModel, source)
+        viewModel.onRunInBackgroundChanged(true)
+        advanceUntilIdle()
+
+        viewModel.onProcessAndShareRequestingNotificationsIfNeeded(
+            postNotificationsGranted = true,
+            requestPostNotifications = { permissionRequests += 1 },
+        )
+        advanceUntilIdle()
+
+        assertEquals(0, permissionRequests)
+        assertEnqueuedEventually(scheduler)
+        assertEquals(false, viewModel.postNotificationsPermissionAskedThisSession)
+    }
+
+    @Test
+    @Config(sdk = [33])
+    fun ungrantedNotificationPermissionPromptsOnceThenDenialEnqueuesBackgroundBatch() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val scheduler = FakeBatchWorkScheduler()
+        val viewModel = viewModel(context, scheduler) { before, preset, _ -> success(context, preset, before) }
+        var permissionRequests = 0
+        stage(viewModel, source)
+        viewModel.onRunInBackgroundChanged(true)
+        advanceUntilIdle()
+
+        viewModel.onProcessAndShareRequestingNotificationsIfNeeded(
+            postNotificationsGranted = false,
+            requestPostNotifications = { permissionRequests += 1 },
+        )
+        advanceUntilIdle()
+
+        assertEquals(1, permissionRequests)
+        assertEquals(true, viewModel.postNotificationsPermissionAskedThisSession)
+        assertEquals(0, scheduler.enqueued.size)
+
+        viewModel.onPostNotificationsPermissionResult(granted = false)
+        assertEnqueuedEventually(scheduler)
+
+        viewModel.onProcessAndShareRequestingNotificationsIfNeeded(
+            postNotificationsGranted = false,
+            requestPostNotifications = { permissionRequests += 1 },
+        )
+        assertEnqueuedEventually(scheduler, expectedCount = 2)
+        assertEquals(1, permissionRequests)
+        assertEquals(true, viewModel.postNotificationsPermissionAskedThisSession)
+    }
+
+    private suspend fun assertEnqueuedEventually(scheduler: FakeBatchWorkScheduler, expectedCount: Int = 1) {
+        repeat(250) {
+            mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+            if (scheduler.enqueued.size == expectedCount) return
+            withContext(Dispatchers.Default) { delay(20) }
+        }
+        assertEquals(expectedCount, scheduler.enqueued.size)
     }
 
     private fun viewModel(

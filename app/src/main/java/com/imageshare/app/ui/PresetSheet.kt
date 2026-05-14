@@ -12,9 +12,12 @@
 package com.imageshare.app.ui
 
 import android.content.ActivityNotFoundException
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -139,6 +142,11 @@ fun MainScreen(viewModel: MainViewModel) {
             if (result.resultCode == Activity.RESULT_OK) result.data?.data else null,
         )
     }
+    val postNotificationsPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        viewModel.onPostNotificationsPermissionResult(granted)
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.shareEvents.collect { shareIntent ->
@@ -219,7 +227,18 @@ fun MainScreen(viewModel: MainViewModel) {
             recentsUris = recentsUris,
             onRecentSelected = viewModel::onRecentSelected,
             onRecentRemoved = viewModel::onRecentRemoved,
-            onProcessAndShare = viewModel::onProcessAndShare,
+            onProcessAndShare = {
+                viewModel.onProcessAndShareRequestingNotificationsIfNeeded(
+                    postNotificationsGranted = context.hasPostNotificationsPermission(),
+                    requestPostNotifications = {
+                        runCatching {
+                            postNotificationsPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }.onFailure {
+                            viewModel.onPostNotificationsPermissionResult(false)
+                        }
+                    },
+                )
+            },
             onCancelBatch = viewModel::onCancelBatch,
             onSaveCopy = viewModel::onSaveCopy,
             onExpandResult = viewModel::onExpandResult,
@@ -230,6 +249,11 @@ fun MainScreen(viewModel: MainViewModel) {
         )
     }
 }
+
+private fun android.content.Context.hasPostNotificationsPermission(): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PresetSheet(

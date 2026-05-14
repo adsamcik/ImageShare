@@ -6,6 +6,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -85,6 +86,7 @@ class MainViewModel(
     private var currentBatchJob: Job? = null
     private var activeBatch: ActiveBatch? = null
     private var activeWorkJobId: String? = null
+    private var hasAskedPostNotificationsPermission = false
 
     val presets: StateFlow<List<Preset>> = presetRepository.observePresets()
         .stateIn(viewModelScope, SharingStarted.Eagerly, DefaultPresets.ALL)
@@ -121,6 +123,8 @@ class MainViewModel(
     val saveDocumentEvents: SharedFlow<Intent> = mutableSaveDocumentEvents.asSharedFlow()
     val saveStatus: StateFlow<SaveStatus> = mutableSaveStatus.asStateFlow()
     val shownComparison: StateFlow<ComparisonState?> = _shownComparison.asStateFlow()
+    val postNotificationsPermissionAskedThisSession: Boolean
+        get() = hasAskedPostNotificationsPermission
 
     init {
         reattachToBackgroundBatch()
@@ -188,6 +192,25 @@ class MainViewModel(
         }
     }
 
+    fun onProcessAndShareRequestingNotificationsIfNeeded(
+        postNotificationsGranted: Boolean,
+        requestPostNotifications: () -> Unit,
+    ) {
+        if (shouldRequestPostNotificationsPermissionBeforeBackgroundBatch(postNotificationsGranted)) {
+            hasAskedPostNotificationsPermission = true
+            requestPostNotifications()
+            return
+        }
+        onProcessAndShare()
+    }
+
+    fun onPostNotificationsPermissionResult(granted: Boolean) {
+        if (!granted) {
+            hasAskedPostNotificationsPermission = true
+        }
+        onProcessAndShare()
+    }
+
     fun onCancelBatch() {
         val partial = currentSuccessfulResults()
         activeWorkJobId?.let { batchWorkScheduler.cancel(it) }
@@ -207,6 +230,13 @@ class MainViewModel(
 
     fun shouldRunWithWorkManager(sourceCount: Int, runInBackground: Boolean): Boolean =
         sourceCount >= LARGE_BATCH_THRESHOLD || runInBackground
+
+    fun shouldRequestPostNotificationsPermissionBeforeBackgroundBatch(postNotificationsGranted: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        if (postNotificationsGranted) return false
+        if (hasAskedPostNotificationsPermission) return false
+        return shouldRunWithWorkManager(sources.value.size, _runInBackground.value)
+    }
 
     fun onSaveCopy() {
         val results = (processingState.value as? ProcessingState.Done)
