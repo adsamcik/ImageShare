@@ -2,12 +2,14 @@
 
 package com.imageshare.benchmark.macro
 
+import android.os.Build
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.FrameTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
+import org.junit.Assume
 import org.junit.Rule
 import org.junit.Test
 
@@ -17,6 +19,10 @@ class PickerToPreviewBenchmark {
 
     @Test
     fun tapToPicker() {
+        Assume.assumeTrue(
+            "PhotoPicker (ACTION_PICK_IMAGES) only available on API 33+; skipping on API ${Build.VERSION.SDK_INT}",
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+        )
         val pickerPackage = PhotoPickerPackageResolver.requirePhotoPickerPackage(
             InstrumentationRegistry.getInstrumentation().context,
         )

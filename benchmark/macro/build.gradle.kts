@@ -75,8 +75,12 @@ dependencies {
 
 androidComponents {
     beforeVariants(selector().all()) { variant ->
-        variant.enable = variant.buildType == "benchmark" || variant.buildType == "debug"
+        variant.enable = variant.buildType == "benchmark"
     }
+}
+
+tasks.register("assembleDebug") {
+    dependsOn("assembleBenchmark")
 }
 
 tasks.register("assembleBenchmarkAndroidTest") {

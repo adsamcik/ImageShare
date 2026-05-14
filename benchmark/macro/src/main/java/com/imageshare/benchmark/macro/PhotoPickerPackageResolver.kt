@@ -3,11 +3,16 @@ package com.imageshare.benchmark.macro
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.provider.MediaStore
 import org.junit.Assert.fail
 
 object PhotoPickerPackageResolver {
-    fun requirePhotoPickerPackage(context: Context): String {
+    fun findPhotoPickerPackage(context: Context): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return null
+        }
+
         val packageManager = context.packageManager
         val pickerIntent = Intent(MediaStore.ACTION_PICK_IMAGES).apply {
             type = "image/*"
@@ -21,6 +26,12 @@ object PhotoPickerPackageResolver {
         KNOWN_PICKER_PACKAGES.firstOrNull { packageName ->
             packageManager.isPackageInstalled(packageName)
         }?.let { return it }
+
+        return null
+    }
+
+    fun requirePhotoPickerPackage(context: Context): String {
+        findPhotoPickerPackage(context)?.let { return it }
 
         fail(
             "No Android photo picker package found. queryIntentActivities(ACTION_PICK_IMAGES) " +
