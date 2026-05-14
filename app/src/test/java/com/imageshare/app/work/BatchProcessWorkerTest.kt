@@ -133,6 +133,44 @@ class BatchProcessWorkerTest {
     }
 
     @Test
+    fun cancellationMidBatchPersistsFinalProgressAndCancelledStateUnderNonCancellable() = runTest {
+        seedManifest()
+        val item1Started = CompletableDeferred<Unit>()
+        AppContainer.overrideForTests(
+            batchManifestDao = database.batchManifestDao(),
+            batchOrchestrator = BatchOrchestrator(
+                FakePipeline(context) { source, preset, jobId ->
+                    when (source.uri.lastPathSegment) {
+                        "0" -> success(context, source, preset, jobId)
+                        "1" -> {
+                            item1Started.complete(Unit)
+                            delay(60_000)
+                            success(context, source, preset, jobId)
+                        }
+                        else -> success(context, source, preset, jobId)
+                    }
+                },
+                StandardTestDispatcher(testScheduler),
+            ),
+            presetRepository = WorkerPresetRepository,
+        )
+        val worker = worker()
+
+        val workJob = async(Dispatchers.IO) { worker.doWork() }
+        item1Started.await()
+
+        workJob.cancelAndJoin()
+
+        val rows = database.batchManifestDao().forJob(JOB_ID)
+        // The first row can only stay Done if runBatch's final applyProgress survives cancellation;
+        // the outer cancellation cleanup only flips Pending rows to Cancelled.
+        assertEquals(BatchProcessWorker.STATE_DONE, rows[0].state)
+        assertTrue(rows[0].storedFilePath != null)
+        assertEquals(BatchProcessWorker.STATE_CANCELLED, rows[1].state)
+        assertEquals(BatchProcessWorker.STATE_CANCELLED, rows[2].state)
+    }
+
+    @Test
     fun progressEmissionsCoalescedTo10Hz() = runTest {
         seedManifest()
         val countingDao = CountingBatchManifestDao(database.batchManifestDao())

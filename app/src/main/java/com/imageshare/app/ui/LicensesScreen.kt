@@ -1,5 +1,6 @@
 package com.imageshare.app.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import androidx.annotation.StringRes
@@ -75,8 +76,12 @@ private fun LicenseRow(license: LicenseEntry) {
         }
         IconButton(
             onClick = {
-                runCatching {
+                try {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(license.url)))
+                } catch (_: ActivityNotFoundException) {
+                    // No browser installed; keep the prior crash-guard behavior.
+                } catch (_: SecurityException) {
+                    // Some OEMs reject otherwise valid view intents.
                 }
             },
         ) {
