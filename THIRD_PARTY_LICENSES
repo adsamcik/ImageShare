@@ -286,7 +286,7 @@ MIT License
 
 MIT License
 
-Copyright (c) 2010-2026 Robolectric contributors
+Copyright (c) 2010 Xtreme Labs, Pivotal Labs and Google Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 associated documentation files (the "Software"), to deal in the Software without restriction, including
@@ -302,6 +302,9 @@ LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE A
 EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Note: a subset of Robolectric files are licensed under Apache-2.0 (see Robolectric's upstream LICENSE for
+the file list). The Apache-2.0 text is reproduced elsewhere in this document.
 
 ================================================================================
 BSD 2-Clause License (covers libavif and libaom)
