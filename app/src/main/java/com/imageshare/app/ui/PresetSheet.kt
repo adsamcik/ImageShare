@@ -538,13 +538,18 @@ private fun RecentUriChip(
     val chipActionLabel = stringResource(R.string.recents_chip_action_label)
     val removeDescription = stringResource(R.string.recents_remove_a11y)
 
-    Box(modifier = Modifier.size(60.dp)) {
+    Box(
+        modifier = Modifier
+            .width(88.dp)
+            .heightIn(min = 72.dp),
+    ) {
         AsyncImage(
             model = imageRequest,
             contentDescription = chipDescription,
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(60.dp)
+                .align(Alignment.CenterStart)
+                .size(72.dp)
                 .clip(MaterialTheme.shapes.medium)
                 .clickable(
                     onClickLabel = chipActionLabel,

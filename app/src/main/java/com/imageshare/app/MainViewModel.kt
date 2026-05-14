@@ -647,7 +647,7 @@ data class BatchWorkStatus(
 
 enum class BatchWorkState { Enqueued, Running, Succeeded, Failed, Cancelled }
 
-private class WorkManagerBatchWorkScheduler(
+internal class WorkManagerBatchWorkScheduler(
     private val context: Context,
 ) : BatchWorkScheduler {
     private val workManager: WorkManager = WorkManager.getInstance(context)
@@ -676,15 +676,32 @@ private class WorkManagerBatchWorkScheduler(
     }
 
     override fun observe(jobId: String): Flow<BatchWorkStatus> = callbackFlow {
-        val liveData = workManager.getWorkInfosForUniqueWorkLiveData(BatchProcessWorker.uniqueWorkName(jobId))
+        val uniqueWorkName = BatchProcessWorker.uniqueWorkName(jobId)
+        val liveData = workManager.getWorkInfosForUniqueWorkLiveData(uniqueWorkName)
+        var fallbackStarted = false
+        fun fallbackToManifestCancellation() {
+            if (fallbackStarted) return
+            fallbackStarted = true
+            launch {
+                cancelOrphanedManifestRows(jobId)
+                trySend(BatchWorkStatus(BatchWorkState.Cancelled))
+                close()
+            }
+        }
         val observer = Observer<List<WorkInfo>> { infos ->
             val latest = infos.firstOrNull()
             if (latest != null) {
                 trySend(latest.toBatchWorkStatus())
                 if (latest.state.isFinished) close()
+            } else {
+                fallbackToManifestCancellation()
             }
         }
         liveData.observeForever(observer)
+        launch(Dispatchers.IO) {
+            val infos = runCatching { workManager.getWorkInfosForUniqueWork(uniqueWorkName).get() }.getOrDefault(emptyList())
+            if (infos.isEmpty()) fallbackToManifestCancellation()
+        }
         awaitClose { liveData.removeObserver(observer) }
     }
 
@@ -703,7 +720,25 @@ private class WorkManagerBatchWorkScheduler(
         liveData.observeForever(observer)
         awaitClose { liveData.removeObserver(observer) }
     }
+
+    private suspend fun cancelOrphanedManifestRows(jobId: String) {
+        withContext(Dispatchers.IO) {
+            AppContainer.batchManifestDao.forJob(jobId)
+                .filterNot { it.isTerminalManifestState() }
+                .forEach {
+                    AppContainer.batchManifestDao.update(
+                        it.copy(state = BatchProcessWorker.STATE_CANCELLED, updatedAt = System.currentTimeMillis()),
+                    )
+                }
+        }
+    }
 }
+
+private fun BatchManifestEntity.isTerminalManifestState(): Boolean = state in setOf(
+    BatchProcessWorker.STATE_DONE,
+    BatchProcessWorker.STATE_CANCELLED,
+    BatchProcessWorker.STATE_FAILED,
+)
 
 private fun WorkInfo.toBatchWorkStatus(): BatchWorkStatus = BatchWorkStatus(
     state = when (state) {
