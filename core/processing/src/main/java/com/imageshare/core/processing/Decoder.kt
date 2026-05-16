@@ -69,10 +69,9 @@ class Decoder(private val resolver: ContentResolver) {
             }
         }
         val scaled = scaleToTarget(decoded, targetLongEdgePx)
-        val oriented = applyOrientation(scaled, probe.orientation)
 
         DecodedImage(
-            bitmap = oriented,
+            bitmap = scaled,
             sourceWidth = probe.width,
             sourceHeight = probe.height,
             hadAlpha = probe.hasAlpha,
@@ -98,7 +97,7 @@ class Decoder(private val resolver: ContentResolver) {
                 height = bounds.height,
                 mimeType = bounds.mimeType,
                 orientation = orientation,
-                hasAlpha = bounds.hasAlphaHint || headerAlpha,
+                hasAlpha = bounds.mimeType in AlphaCapableMimeTypes && (bounds.hasAlphaHint || headerAlpha),
             )
         }
     }

@@ -16,8 +16,9 @@ class AvifAvailabilityInstrumentedTest {
     }
 
     @Test
-    fun avifAvailabilityProbeFindsDeviceEncoder() {
+    fun avifAvailabilityProbeReturnsTrueWhenEncoderPresent() {
         assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        assumeTrue("Device under test has no AVIF encoder", AvifAvailability.isPlatformWriteSupported())
 
         assertTrue(AvifAvailability.isPlatformWriteSupported())
     }

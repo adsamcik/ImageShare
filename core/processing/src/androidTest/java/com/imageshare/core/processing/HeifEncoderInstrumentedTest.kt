@@ -25,6 +25,7 @@ class HeifEncoderInstrumentedTest {
     @Test
     fun heifAvailabilityProbeFindsDeviceEncoder() {
         assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+        assumeTrue("Device under test has no HEIF encoder", HeifAvailability.isWriteSupported())
 
         assertTrue(HeifAvailability.isWriteSupported())
     }

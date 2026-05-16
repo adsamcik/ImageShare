@@ -33,7 +33,7 @@ class EncoderInstrumentedTest {
     }
 
     @Test
-    fun decodeResizeEncodeEndToEnd() = runBlocking {
+    fun decodeResizeEncodeEndToEnd(): Unit = runBlocking {
         val source = photoLikeBitmap(2000, 1500)
         val sourceBytes = encoder.encode(source, EncodeFormat.JPEG, 92, AlphaPolicy.Error).bytes
         source.recycle()

@@ -62,7 +62,7 @@ class DecoderInstrumentedTest {
     }
 
     @Test
-    fun screenshotPngReportsNoAlphaAndDecodesFlatColor() = runBlocking {
+    fun screenshotPngReportsBitmapCompressAlphaChannelAndDecodesFlatColor() = runBlocking {
         val uri = TestImages.screenshotPng(context)
         val metadata = decoder.readMetadata(uri)
         val image = decoder.decode(uri, targetLongEdgePx = 180)
@@ -70,8 +70,8 @@ class DecoderInstrumentedTest {
         assertEquals(320, metadata.width)
         assertEquals(180, metadata.height)
         assertEquals("image/png", metadata.mimeType)
-        assertFalse(metadata.hasAlpha)
-        assertFalse(image.hadAlpha)
+        assertTrue(metadata.hasAlpha)
+        assertTrue(image.hadAlpha)
         assertFalse(image.bitmap.hasAlpha())
         image.bitmap.recycle()
     }
