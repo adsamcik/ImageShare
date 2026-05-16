@@ -37,6 +37,11 @@ class PresetPipelineTest {
         assertEquals(AlphaPolicy.Error, resolveAlphaPolicy(AlphaFallback.Error, EncodeFormat.JPEG))
         assertEquals(AlphaPolicy.FillBackground(-0x1), resolveAlphaPolicy(AlphaFallback.FillWhite, EncodeFormat.JPEG))
         assertEquals(AlphaPolicy.Allow, resolveAlphaPolicy(AlphaFallback.SwitchToPng, EncodeFormat.PNG))
+        assertEquals(AlphaPolicy.Allow, resolveAlphaPolicy(AlphaFallback.SwitchToPng, EncodeFormat.WEBP_LOSSY))
+        assertEquals(
+            AlphaPolicy.FillBackground(-0x1),
+            resolveAlphaPolicy(AlphaFallback.SwitchToPng, EncodeFormat.JPEG),
+        )
     }
 
     @Test

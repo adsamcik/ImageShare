@@ -29,16 +29,14 @@ import com.imageshare.feature.preset.ResizeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -340,11 +338,11 @@ class MainViewModelTest {
     }
 
     private suspend fun assertEnqueuedEventually(scheduler: FakeBatchWorkScheduler, expectedCount: Int = 1) {
-        repeat(250) {
-            mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
-            if (scheduler.enqueued.size == expectedCount) return
-            withContext(Dispatchers.Default) { delay(20) }
+        mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+        if (scheduler.enqueued.size < expectedCount) {
+            scheduler.awaitEnqueuedCount(expectedCount)
         }
+        mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
         assertEquals(expectedCount, scheduler.enqueued.size)
     }
 
@@ -437,10 +435,16 @@ private class FakeSharedIntakeRepository(private val sources: List<SourceItem>) 
 
 private class FakeBatchWorkScheduler : BatchWorkScheduler {
     val enqueued = mutableListOf<String>()
+    private val enqueuedCount = MutableStateFlow(0)
 
     override fun enqueue(jobId: String, presetId: String, customOverrideJson: String?): Flow<BatchWorkStatus> {
         enqueued += jobId
+        enqueuedCount.value = enqueued.size
         return flowOf(BatchWorkStatus(BatchWorkState.Succeeded))
+    }
+
+    suspend fun awaitEnqueuedCount(expectedCount: Int) {
+        enqueuedCount.first { it >= expectedCount }
     }
 
     override fun observe(jobId: String): Flow<BatchWorkStatus> =

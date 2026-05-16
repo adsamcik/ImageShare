@@ -187,7 +187,15 @@ internal fun resolveEncodeFormat(
 internal fun resolveAlphaPolicy(alphaFallback: AlphaFallback, format: EncodeFormat): AlphaPolicy = when (alphaFallback) {
     AlphaFallback.Error -> AlphaPolicy.Error
     AlphaFallback.FillWhite -> AlphaPolicy.FillBackground(WHITE_ARGB)
-    AlphaFallback.SwitchToPng -> if (format == EncodeFormat.PNG) AlphaPolicy.Allow else AlphaPolicy.Allow
+    AlphaFallback.SwitchToPng -> when (format) {
+        EncodeFormat.PNG,
+        EncodeFormat.WEBP_LOSSY,
+        EncodeFormat.WEBP_LOSSLESS,
+        EncodeFormat.HEIF,
+        EncodeFormat.AVIF,
+        -> AlphaPolicy.Allow
+        EncodeFormat.JPEG -> AlphaPolicy.FillBackground(WHITE_ARGB)
+    }
 }
 
 internal fun OutputFormat.toEncodeFormat(): EncodeFormat = when (this) {
