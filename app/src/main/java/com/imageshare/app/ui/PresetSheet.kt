@@ -22,6 +22,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -472,17 +475,17 @@ private fun EmptyState(
     onRecentSelected: (Uri) -> Unit,
     onRecentRemoved: (Uri) -> Unit,
 ) {
-    val description = stringResource(R.string.empty_state_description)
     val pickLabel = stringResource(R.string.pick_from_gallery)
     val openDocumentsLabel = stringResource(R.string.open_documents_button)
     val openDocumentsTooltip = stringResource(R.string.open_documents_tooltip)
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = description },
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(stringResource(R.string.empty_state_title))
+        Text(
+            text = stringResource(R.string.empty_state_title),
+            style = MaterialTheme.typography.headlineSmall,
+        )
         Text(stringResource(R.string.empty_state_hint))
         Button(
             onClick = onPickFromGallery,
@@ -586,23 +589,34 @@ private fun RecentUriChip(
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .size(48.dp),
+                .offset(x = 6.dp, y = (-6).dp)
+                .size(32.dp),
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
                 shape = CircleShape,
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .align(Alignment.Center),
             ) {}
-            IconButton(
-                onClick = onRemoved,
-                modifier = Modifier.matchParentSize(),
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(CircleShape)
+                    .clickable(
+                        onClickLabel = removeDescription,
+                        onClick = onRemoved,
+                    )
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = removeDescription
+                    },
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Filled.Close,
-                    contentDescription = removeDescription,
-                    modifier = Modifier.size(24.dp),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
@@ -860,6 +874,12 @@ private fun ProcessButtons(
             }
         }
         val saveCopyDescription = stringResource(R.string.save_copy_description)
+        val saveCopyDisabledHint = stringResource(R.string.save_copy_disabled_no_results)
+        val saveCopyA11yDescription = if (saveEnabled) {
+            saveCopyDescription
+        } else {
+            "$saveCopyDescription. $saveCopyDisabledHint."
+        }
         TooltipBox(
             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
             tooltip = {
@@ -868,7 +888,7 @@ private fun ProcessButtons(
                         if (saveEnabled) {
                             saveCopyDescription
                         } else {
-                            stringResource(R.string.save_copy_disabled_no_results)
+                            saveCopyDisabledHint
                         },
                     )
                 }
@@ -881,7 +901,7 @@ private fun ProcessButtons(
                     enabled = saveEnabled,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .semantics { contentDescription = saveCopyDescription },
+                        .semantics { contentDescription = saveCopyA11yDescription },
                 ) {
                     Text(stringResource(R.string.save_copy))
                 }
@@ -890,6 +910,7 @@ private fun ProcessButtons(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AlphaConflictDialog(
     count: Int,
@@ -902,7 +923,10 @@ private fun AlphaConflictDialog(
         title = { Text(stringResource(R.string.alpha_conflict_title)) },
         text = { Text(quantityStringResource(R.plurals.alpha_conflict_count, count, count)) },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 TextButton(onClick = onUseWhite) {
                     Text(stringResource(R.string.alpha_use_white))
                 }

@@ -74,7 +74,8 @@ class PresetSheetAccessibilityTest {
             hasStateDescription("selected") and hasText("Small file"),
         ).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Process and share", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Save copy", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Save copy. Process images first.", useUnmergedTree = true)
+            .assertIsDisplayed()
         composeRule.onNodeWithText("Save copy").assertIsDisplayed()
     }
 

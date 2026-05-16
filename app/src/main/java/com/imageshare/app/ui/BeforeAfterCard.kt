@@ -61,6 +61,7 @@ fun BeforeAfterCard(
     val reductionText = reduction?.let { stringResource(R.string.reduction_percent_fmt, it) }
         ?: stringResource(R.string.dash_placeholder)
     val format = formatLabel(result.format)
+    val accessibleFormat = formatLabel(result.format, accessible = true)
     val metadata = metadataLabel(effectiveMetadata)
     val name = result.before.displayName ?: stringResource(R.string.unnamed_image)
     val description = if (reduction != null) {
@@ -72,7 +73,7 @@ fun BeforeAfterCard(
             afterSizeA11y,
             afterDimsA11y,
             reduction,
-            format,
+            accessibleFormat,
             metadata,
         )
     } else {
@@ -83,7 +84,7 @@ fun BeforeAfterCard(
             beforeDimsA11y,
             afterSizeA11y,
             afterDimsA11y,
-            format,
+            accessibleFormat,
             metadata,
         )
     }
@@ -188,13 +189,17 @@ internal fun reductionPct(before: Long?, after: Long): Int? {
 }
 
 @Composable
-private fun formatLabel(format: EncodeFormat): String = when (format) {
-    EncodeFormat.JPEG -> stringResource(R.string.output_format_jpeg)
-    EncodeFormat.PNG -> stringResource(R.string.output_format_png)
-    EncodeFormat.WEBP_LOSSY -> stringResource(R.string.output_format_webp_lossy)
-    EncodeFormat.WEBP_LOSSLESS -> stringResource(R.string.output_format_webp_lossless)
-    EncodeFormat.HEIF -> stringResource(R.string.output_format_heif)
-    EncodeFormat.AVIF -> stringResource(R.string.output_format_avif)
+private fun formatLabel(format: EncodeFormat, accessible: Boolean = false): String = when (format) {
+    EncodeFormat.JPEG -> stringResource(if (accessible) R.string.output_format_jpeg_accessible else R.string.output_format_jpeg)
+    EncodeFormat.PNG -> stringResource(if (accessible) R.string.output_format_png_accessible else R.string.output_format_png)
+    EncodeFormat.WEBP_LOSSY -> {
+        stringResource(if (accessible) R.string.output_format_webp_lossy_accessible else R.string.output_format_webp_lossy)
+    }
+    EncodeFormat.WEBP_LOSSLESS -> {
+        stringResource(if (accessible) R.string.output_format_webp_lossless_accessible else R.string.output_format_webp_lossless)
+    }
+    EncodeFormat.HEIF -> stringResource(if (accessible) R.string.output_format_heif_accessible else R.string.output_format_heif)
+    EncodeFormat.AVIF -> stringResource(if (accessible) R.string.output_format_avif_accessible else R.string.output_format_avif)
 }
 
 @Composable
