@@ -4,6 +4,7 @@ package com.imageshare.app
 
 import android.content.Intent
 import android.content.IntentFilter
+import android.app.Instrumentation.ActivityMonitor
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -20,7 +21,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -57,8 +57,7 @@ class MainActivityShareIntentTest {
             assertTrue("unrelated app cache directory must not be swept", siblingCacheDir.exists())
 
             composeRule.onNodeWithText("Process & share").performClick()
-            val chooser = instrumentation.waitForMonitorWithTimeout(monitor, 15_000L)
-            assertNotNull("chooser intent should be launched", chooser)
+            assertChooserLaunched(instrumentation, monitor, "chooser intent should be launched")
         }
         instrumentation.removeMonitor(monitor)
     }
@@ -76,8 +75,7 @@ class MainActivityShareIntentTest {
             composeRule.onNodeWithText("Social upload").performClick()
             composeRule.onNodeWithText("Process & share").performClick()
 
-            val chooser = instrumentation.waitForMonitorWithTimeout(monitor, 15_000L)
-            assertNotNull("chooser intent should be launched for WebP preset", chooser)
+            assertChooserLaunched(instrumentation, monitor, "chooser intent should be launched for WebP preset")
         }
         instrumentation.removeMonitor(monitor)
     }
@@ -98,8 +96,11 @@ class MainActivityShareIntentTest {
             }
             composeRule.onNodeWithText("Switch to PNG for those").performClick()
 
-            val chooser = instrumentation.waitForMonitorWithTimeout(monitor, 15_000L)
-            assertNotNull("chooser intent should be launched after PNG conflict resolution", chooser)
+            assertChooserLaunched(
+                instrumentation,
+                monitor,
+                "chooser intent should be launched after PNG conflict resolution",
+            )
         }
         instrumentation.removeMonitor(monitor)
     }
@@ -143,13 +144,13 @@ class MainActivityShareIntentTest {
     }
 
     private fun shareIntentFor(name: String, png: Boolean = false): Intent {
-        val testContext = InstrumentationRegistry.getInstrumentation().context
-        val imageFile = File(testContext.cacheDir, name).apply {
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val imageFile = File(File(targetContext.cacheDir, "shared-output/test-fixtures"), name).apply {
             if (png) writePngFixture(this) else writeJpegFixture(this)
         }
         val uri = FileProvider.getUriForFile(
-            testContext,
-            "com.imageshare.app.test.fileprovider",
+            targetContext,
+            "${targetContext.packageName}.shareprovider",
             imageFile,
         )
         return Intent(Intent.ACTION_SEND)
@@ -160,16 +161,27 @@ class MainActivityShareIntentTest {
     }
 
     private fun writeJpegFixture(file: File) {
-        val bitmap = Bitmap.createBitmap(64, 48, Bitmap.Config.ARGB_8888)
+        file.parentFile?.mkdirs()
+        val bitmap = Bitmap.createBitmap(3_000, 2_000, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawColor(Color.BLUE)
         file.outputStream().use { output -> bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output) }
         bitmap.recycle()
     }
 
     private fun writePngFixture(file: File) {
-        val bitmap = Bitmap.createBitmap(64, 48, Bitmap.Config.ARGB_8888)
+        file.parentFile?.mkdirs()
+        val bitmap = Bitmap.createBitmap(3_000, 2_000, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(Color.TRANSPARENT)
         file.outputStream().use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, output) }
         bitmap.recycle()
+    }
+
+    private fun assertChooserLaunched(
+        instrumentation: android.app.Instrumentation,
+        monitor: ActivityMonitor,
+        message: String,
+    ) {
+        instrumentation.waitForMonitorWithTimeout(monitor, 15_000L)
+        assertTrue(message, monitor.hits > 0)
     }
 }

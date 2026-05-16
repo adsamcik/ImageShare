@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.SemanticsMatcher
@@ -71,7 +72,6 @@ class PresetSheetAccessibilityTest {
         composeRule.onNodeWithContentDescription("photo.jpg, 64 by 48 pixels, 2.4 kilobytes").assertIsDisplayed()
         composeRule.onNode(
             hasStateDescription("selected") and hasText("Small file"),
-            useUnmergedTree = true,
         ).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Process and share", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Save copy", useUnmergedTree = true).assertIsDisplayed()
@@ -138,6 +138,7 @@ class PresetSheetAccessibilityTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("process-share-button").assertIsNotEnabled()
         composeRule.onNodeWithText("Some sources would be enlarged. Toggle “Allow upscaling” or reduce the size.")
+            .performScrollTo()
             .assertIsDisplayed()
 
         composeRule.onNodeWithTag("reset-dimensions-button").performClick()
@@ -158,7 +159,10 @@ class PresetSheetAccessibilityTest {
         )
         val stored = OutputStore.StoredItem(
             jobId = "job",
-            file = File(context.cacheDir, "photo-result.jpg").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) },
+            file = File(context.cacheDir, "photo-result.jpg").apply {
+                parentFile?.mkdirs()
+                writeBytes(byteArrayOf(1, 2, 3, 4))
+            },
             filename = "photo-result.jpg",
             sizeBytes = 1_024L,
             mimeType = "image/jpeg",
@@ -195,7 +199,9 @@ class PresetSheetAccessibilityTest {
                 }
             },
         ).assertIsDisplayed()
-        composeRule.onNodeWithTag("view-comparison-button", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("view-comparison-button", useUnmergedTree = true)
+            .performScrollTo()
+            .performClick()
         composeRule.onNodeWithTag("comparison-screen").assertIsDisplayed()
         composeRule.onNodeWithTag("comparison-close", useUnmergedTree = true).performClick()
         composeRule.onAllNodes(hasTestTag("comparison-screen")).assertCountEquals(0)

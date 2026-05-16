@@ -92,6 +92,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.verticalScroll
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Precision
@@ -350,6 +351,7 @@ fun PresetSheet(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(paddingValues)
+                        .verticalScroll(rememberScrollState())
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
@@ -664,7 +666,7 @@ private fun PresetsSection(
                     label = { Text(preset.displayName) },
                     modifier = Modifier
                         .heightIn(min = 48.dp)
-                        .semantics {
+                        .semantics(mergeDescendants = true) {
                             stateDescription = if (isSelected) selectedState else notSelectedState
                         },
                 )
