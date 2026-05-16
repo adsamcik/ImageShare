@@ -2,8 +2,14 @@
 
 package com.imageshare.app
 
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Intent
+import android.database.Cursor
+import android.database.MatrixCursor
 import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -53,7 +59,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowContentResolver
 import java.io.File
+import java.io.FileNotFoundException
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -180,6 +188,32 @@ class MainViewModelTest {
         advanceUntilIdle()
 
         assertEquals(DefaultPresets.SmallFile.resize, viewModel.effectivePreset.value?.resize)
+    }
+
+    @Test
+    fun onRecentSelectedRestagesSourceInSourcesFlow() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
+        val authority = "recentvm${System.nanoTime()}"
+        ShadowContentResolver.registerProviderInternal(
+            authority,
+            RecentContentProvider(displayName = "recent.jpg", sizeBytes = 123L, mimeType = "image/jpeg"),
+        )
+        val recentUri = Uri.parse("content://$authority/image")
+
+        viewModel.onRecentSelected(recentUri)
+        var attempts = 0
+        while (viewModel.sources.value.none { it.uri == recentUri } && attempts < 20) {
+            advanceUntilIdle()
+            Thread.sleep(50)
+            attempts += 1
+        }
+        advanceUntilIdle()
+
+        val staged = viewModel.sources.value.single { it.uri == recentUri }
+        assertEquals("image/jpeg", staged.mimeType)
+        assertEquals("recent.jpg", staged.displayName)
+        assertEquals(123L, staged.sizeBytes)
     }
 
     @Test
@@ -451,4 +485,37 @@ private class FakeBatchWorkScheduler : BatchWorkScheduler {
         flowOf(BatchWorkStatus(BatchWorkState.Succeeded))
 
     override fun cancel(jobId: String) = Unit
+}
+
+private class RecentContentProvider(
+    private val displayName: String,
+    private val sizeBytes: Long,
+    private val mimeType: String,
+) : ContentProvider() {
+    override fun onCreate(): Boolean = true
+
+    override fun query(
+        uri: Uri,
+        projection: Array<out String>?,
+        selection: String?,
+        selectionArgs: Array<out String>?,
+        sortOrder: String?,
+    ): Cursor = MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)).apply {
+        addRow(arrayOf<Any?>(displayName, sizeBytes))
+    }
+
+    override fun getType(uri: Uri): String = mimeType
+
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+        throw FileNotFoundException("No dimensions fixture needed for $uri")
+    }
+
+    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    override fun update(
+        uri: Uri,
+        values: ContentValues?,
+        selection: String?,
+        selectionArgs: Array<out String>?,
+    ): Int = 0
 }

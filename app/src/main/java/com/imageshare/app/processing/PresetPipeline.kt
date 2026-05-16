@@ -118,7 +118,10 @@ class PresetPipeline(
                 config = TargetSizeEncoder.Config(
                     format = format,
                     targetBytes = targetSizeBytes,
-                    qualityStart = preset.quality.coerceIn(TARGET_QUALITY_MIN, TARGET_QUALITY_MAX),
+                    qualityStart = preset.quality.coerceIn(
+                        TargetSizeEncoder.Config.DEFAULT_QUALITY_MIN,
+                        TargetSizeEncoder.Config.DEFAULT_QUALITY_MAX,
+                    ),
                     alphaPolicy = alphaPolicy,
                 ),
             ).let { result ->
@@ -260,5 +263,3 @@ private const val DEFAULT_LONG_EDGE_PX = 4096
 private const val MIN_LONG_EDGE_PX = 16
 private const val PERCENT_DENOMINATOR = 100
 private const val WHITE_ARGB = -0x1
-private const val TARGET_QUALITY_MIN = 30
-private const val TARGET_QUALITY_MAX = 95

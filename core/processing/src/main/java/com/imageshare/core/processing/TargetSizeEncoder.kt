@@ -29,8 +29,8 @@ class TargetSizeEncoder(
     data class Config(
         val format: EncodeFormat,
         val targetBytes: Long,
-        val qualityMin: Int = 30,
-        val qualityMax: Int = 95,
+        val qualityMin: Int = DEFAULT_QUALITY_MIN,
+        val qualityMax: Int = DEFAULT_QUALITY_MAX,
         val qualityStart: Int = 80,
         val qualityTolerance: Int = 2,
         val dimensionStepFactor: Double = 0.85,
@@ -50,6 +50,11 @@ class TargetSizeEncoder(
             require(minLongEdgePx >= 64) { "minLongEdgePx must be >= 64" }
             require(maxIterations in 3..50) { "maxIterations must be in [3, 50]" }
             require(sizeOvershootRatio >= 1.0) { "sizeOvershootRatio must be >= 1.0" }
+        }
+
+        companion object {
+            const val DEFAULT_QUALITY_MIN = 30
+            const val DEFAULT_QUALITY_MAX = 95
         }
     }
 

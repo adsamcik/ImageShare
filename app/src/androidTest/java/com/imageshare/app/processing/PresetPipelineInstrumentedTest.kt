@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.imageshare.core.io.OutputStore
@@ -17,6 +18,7 @@ import kotlin.math.max
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -27,6 +29,7 @@ class PresetPipelineInstrumentedTest {
 
     @Test
     fun webpSourceFullPipelineRoundTrip() = runBlocking {
+        assumeTrue("WEBP_LOSSY requires API 30+", Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
         val source = sourceItem(writeFixture("pipeline-source.webp", 640, 480, Bitmap.CompressFormat.WEBP_LOSSY))
 
         val result = pipeline.run(source, DefaultPresets.SmallFile, "webp-round-trip") as PresetPipeline.Result.Success
@@ -54,12 +57,19 @@ class PresetPipelineInstrumentedTest {
     @Test
     fun emailPresetHitsTargetSizeForFiveMegapixelJpeg() = runBlocking {
         val source = sourceItem(writePhotoLikeJpeg("email-5mp.jpg", 2560, 1920))
+        // Use an artificial Email variant: DefaultPresets.Email (q=60, 1280px) is already
+        // far below 250KB with plain Encoder, so it would not catch targetSize routing regressions.
+        val targetForcingPreset = DefaultPresets.Email.copy(
+            quality = 95,
+            resize = ResizeMode.LongEdge(1600),
+        )
 
-        val result = pipeline.run(source, DefaultPresets.Email, "email-target") as PresetPipeline.Result.Success
+        val result = pipeline.run(source, targetForcingPreset, "email-target") as PresetPipeline.Result.Success
 
         assertEquals(EncodeFormat.JPEG, result.format)
         assertTrue("size=${result.stored.file.length()}", result.stored.file.length() <= 250_000L)
-        assertTrue(max(result.finalWidth, result.finalHeight) <= 1280)
+        assertTrue("size=${result.stored.file.length()}", result.stored.file.length() > 50_000L)
+        assertTrue(max(result.finalWidth, result.finalHeight) <= 1600)
     }
 
     @Test
