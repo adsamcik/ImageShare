@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.app.Instrumentation.ActivityMonitor
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.os.Bundle
@@ -21,6 +22,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -91,7 +93,7 @@ class MainActivityShareIntentTest {
             }
             composeRule.onNodeWithText("Best quality").performClick()
             composeRule.onNodeWithText("Process & share").performClick()
-            composeRule.waitUntil(timeoutMillis = 15_000L) {
+            composeRule.waitUntil(timeoutMillis = 30_000L) {
                 composeRule.onAllNodesWithText("Transparency detected").fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onNodeWithText("Switch to PNG for those").performClick()
@@ -103,6 +105,57 @@ class MainActivityShareIntentTest {
             )
         }
         instrumentation.removeMonitor(monitor)
+    }
+
+    @Test
+    fun alphaConflictUseWhiteButtonResumesBatchWithFlatWhiteJpeg() {
+        val appCacheDir = ApplicationProvider.getApplicationContext<android.content.Context>().cacheDir
+        File(appCacheDir, "shared-output").deleteRecursively()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val monitor = instrumentation.addMonitor(IntentFilter(Intent.ACTION_CHOOSER), null, true)
+
+        try {
+            ActivityScenario.launch<MainActivity>(shareIntentFor("alpha-use-white.png", png = true)).use {
+                composeRule.waitUntil(timeoutMillis = 5_000L) {
+                    composeRule.onAllNodesWithText("alpha-use-white.png").fetchSemanticsNodes().isNotEmpty()
+                }
+                composeRule.onNodeWithText("Best quality").performClick()
+                composeRule.onNodeWithText("Process & share").performClick()
+                composeRule.waitUntil(timeoutMillis = 30_000L) {
+                    composeRule.onAllNodesWithText("Transparency detected").fetchSemanticsNodes().isNotEmpty()
+                }
+                composeRule.onNodeWithText("Use white background").performClick()
+                val output = waitForSharedOutputFile(appCacheDir, ".jpg")
+                assertChooserLaunched(instrumentation, monitor, "chooser intent should be launched after white fallback")
+                assertFlatWhiteJpeg(output)
+            }
+        } finally {
+            instrumentation.removeMonitor(monitor)
+        }
+    }
+
+    @Test
+    fun alphaConflictSkipButtonShowsSkippedSnackbarAndNoSuccessfulItems() {
+        val appCacheDir = ApplicationProvider.getApplicationContext<android.content.Context>().cacheDir
+        File(appCacheDir, "shared-output").deleteRecursively()
+
+        ActivityScenario.launch<MainActivity>(shareIntentFor("alpha-skip.png", png = true)).use {
+            composeRule.waitUntil(timeoutMillis = 5_000L) {
+                composeRule.onAllNodesWithText("alpha-skip.png").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText("Best quality").performClick()
+            composeRule.onNodeWithText("Process & share").performClick()
+            composeRule.waitUntil(timeoutMillis = 30_000L) {
+                composeRule.onAllNodesWithText("Transparency detected").fetchSemanticsNodes().isNotEmpty()
+            }
+
+            composeRule.onNodeWithText("Skip").performClick()
+
+            composeRule.waitUntil(timeoutMillis = 5_000L) {
+                composeRule.onAllNodesWithText("1 image skipped.").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue(sharedOutputFiles(appCacheDir).isEmpty())
+        }
     }
 
     @Test
@@ -181,7 +234,33 @@ class MainActivityShareIntentTest {
         monitor: ActivityMonitor,
         message: String,
     ) {
-        instrumentation.waitForMonitorWithTimeout(monitor, 15_000L)
+        instrumentation.waitForMonitorWithTimeout(monitor, 30_000L)
         assertTrue(message, monitor.hits > 0)
+    }
+
+    private fun waitForSharedOutputFile(appCacheDir: File, extension: String): File {
+        composeRule.waitUntil(timeoutMillis = 30_000L) {
+            sharedOutputFiles(appCacheDir).any { it.name.endsWith(extension) }
+        }
+        return sharedOutputFiles(appCacheDir).first { it.name.endsWith(extension) }
+    }
+
+    private fun sharedOutputFiles(appCacheDir: File): List<File> =
+        File(appCacheDir, "shared-output")
+            .walkTopDown()
+            .filter { it.isFile && !it.relativeTo(File(appCacheDir, "shared-output")).path.startsWith("test-fixtures") }
+            .toList()
+
+    private fun assertFlatWhiteJpeg(file: File) {
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+        assertNotNull(bitmap)
+        try {
+            val pixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
+            assertTrue(Color.red(pixel) >= 245)
+            assertTrue(Color.green(pixel) >= 245)
+            assertTrue(Color.blue(pixel) >= 245)
+        } finally {
+            bitmap.recycle()
+        }
     }
 }

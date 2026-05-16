@@ -1,6 +1,8 @@
 package com.imageshare.core.processing
 
 import android.os.Build
+import android.graphics.Color
+import androidx.heifwriter.HeifWriter
 import androidx.exifinterface.media.ExifInterface
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -93,6 +95,22 @@ class DecoderInstrumentedTest {
     }
 
     @Test
+    fun heifSourceDecodesAndReportsCorrectMimeAndDimensions() = runBlocking {
+        assumeTrue(HeifAvailability.isWriteSupported())
+        val uri = writeHeifFixture(width = 320, height = 240)
+
+        val metadata = decoder.readMetadata(uri)
+        val image = decoder.decode(uri, targetLongEdgePx = 160)
+
+        assertEquals("image/heif", metadata.mimeType)
+        assertEquals(320, metadata.width)
+        assertEquals(240, metadata.height)
+        assertEquals(160, image.bitmap.width)
+        assertEquals(120, image.bitmap.height)
+        image.bitmap.recycle()
+    }
+
+    @Test
     fun avifDecodesOnApi31PlusOrFailsAsUnsupported() = runBlocking {
         assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
         val thrown = runCatching {
@@ -144,6 +162,7 @@ class DecoderInstrumentedTest {
         assertEquals(1, metadata.height)
         assertEquals(1, image.bitmap.width)
         assertEquals(1, image.bitmap.height)
+        assertColorNear(Color.RED, image.bitmap.getPixel(0, 0))
         image.bitmap.recycle()
     }
 
@@ -160,6 +179,33 @@ class DecoderInstrumentedTest {
         assertTrue(max(image.bitmap.width, image.bitmap.height) <= 1024)
         assertTrue("allocation delta=${afterBytes - beforeBytes}", afterBytes - beforeBytes < MaxAllocationDeltaBytes)
         image.bitmap.recycle()
+    }
+
+    private fun writeHeifFixture(width: Int, height: Int): android.net.Uri {
+        val file = java.io.File(context.cacheDir, "heif-source-decode.heic").apply { delete() }
+        val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(bitmap).drawColor(Color.rgb(48, 96, 192))
+        var writer: HeifWriter? = null
+        try {
+            writer = HeifWriter.Builder(file.absolutePath, width, height, HeifWriter.INPUT_MODE_BITMAP)
+                .setQuality(90)
+                .build()
+            writer.start()
+            writer.addBitmap(bitmap)
+            writer.stop(10_000L)
+            writer.close()
+            writer = null
+        } finally {
+            runCatching { writer?.close() }
+            bitmap.recycle()
+        }
+        return android.net.Uri.fromFile(file)
+    }
+
+    private fun assertColorNear(expected: Int, actual: Int) {
+        assertTrue(abs(Color.red(expected) - Color.red(actual)) <= 8)
+        assertTrue(abs(Color.green(expected) - Color.green(actual)) <= 8)
+        assertTrue(abs(Color.blue(expected) - Color.blue(actual)) <= 8)
     }
 
     private companion object {

@@ -15,6 +15,7 @@ import com.imageshare.core.processing.MetadataApplier
 import com.imageshare.core.processing.MetadataMode
 import com.imageshare.core.processing.MetadataSource
 import com.imageshare.core.processing.Resizer
+import com.imageshare.core.processing.TargetSizeEncoder
 import com.imageshare.feature.preset.AlphaFallback
 import com.imageshare.feature.preset.MetadataPolicy
 import com.imageshare.feature.preset.OutputFormat
@@ -102,12 +103,28 @@ class PresetPipeline(
         onProgress: (Step) -> Unit,
     ): EncodeResult? = runStep(source, Step.Encoding, onProgress) {
         val format = resolveEncodeFormat(preset.format, preset.alphaFallback, hadAlpha)
-        Encoder().encode(
-            bitmap = bitmap,
-            format = format,
-            quality = preset.quality,
-            alphaPolicy = resolveAlphaPolicy(preset.alphaFallback, format),
-        )
+        val alphaPolicy = resolveAlphaPolicy(preset.alphaFallback, format)
+        val targetSizeBytes = preset.targetSizeBytes
+        if (targetSizeBytes == null) {
+            Encoder().encode(
+                bitmap = bitmap,
+                format = format,
+                quality = preset.quality,
+                alphaPolicy = alphaPolicy,
+            )
+        } else {
+            TargetSizeEncoder().encodeToTarget(
+                bitmap = bitmap,
+                config = TargetSizeEncoder.Config(
+                    format = format,
+                    targetBytes = targetSizeBytes,
+                    qualityStart = preset.quality.coerceIn(TARGET_QUALITY_MIN, TARGET_QUALITY_MAX),
+                    alphaPolicy = alphaPolicy,
+                ),
+            ).let { result ->
+                EncodeResult(result.bytes, result.width, result.height, result.format, result.qualityUsed)
+            }
+        }
     }
 
     private suspend fun applyMetadata(
@@ -243,3 +260,5 @@ private const val DEFAULT_LONG_EDGE_PX = 4096
 private const val MIN_LONG_EDGE_PX = 16
 private const val PERCENT_DENOMINATOR = 100
 private const val WHITE_ARGB = -0x1
+private const val TARGET_QUALITY_MIN = 30
+private const val TARGET_QUALITY_MAX = 95

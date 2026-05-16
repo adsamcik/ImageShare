@@ -29,6 +29,7 @@ import com.imageshare.app.MainViewModel.CustomOverride
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.ui.PresetSheet
 import com.imageshare.core.io.OutputStore
+import com.imageshare.core.io.RecentUriEntry
 import com.imageshare.core.io.SourceItem
 import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.feature.preset.DefaultPresets
@@ -206,6 +207,41 @@ class PresetSheetAccessibilityTest {
         composeRule.onNodeWithTag("comparison-screen").assertIsDisplayed()
         composeRule.onNodeWithTag("comparison-close", useUnmergedTree = true).performClick()
         composeRule.onAllNodes(hasTestTag("comparison-screen")).assertCountEquals(0)
+    }
+
+    @Test
+    fun recentsRowTapRestagesSource() {
+        val recentUri = Uri.parse("content://images/recent")
+        val recentSource = SourceItem(
+            uri = recentUri,
+            mimeType = "image/jpeg",
+            displayName = "recent-photo.jpg",
+            sizeBytes = 4_096L,
+            width = 320,
+            height = 240,
+        )
+        var sources by mutableStateOf(emptyList<SourceItem>())
+
+        composeRule.setContent {
+            PresetSheet(
+                sources = sources,
+                presets = DefaultPresets.ALL,
+                selectedPreset = DefaultPresets.SmallFile,
+                processingState = ProcessingState.Idle,
+                recentsUris = listOf(RecentUriEntry(recentUri, "recent-photo.jpg")),
+                onRecentSelected = { sources = listOf(recentSource) },
+                onPresetSelected = {},
+                onPickFromGallery = {},
+                onProcessAndShare = {},
+                onCancelBatch = {},
+                onSaveCopy = {},
+                onAlphaConflictStrategy = {},
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("Open recent-photo.jpg").performClick()
+
+        composeRule.onNodeWithText("recent-photo.jpg").assertIsDisplayed()
     }
 }
 

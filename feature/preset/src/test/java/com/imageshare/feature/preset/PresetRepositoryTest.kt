@@ -36,8 +36,8 @@ class PresetRepositoryTest {
     }
 
     @Test
-    fun emailPresetHasOneMegabyteTargetSize() {
-        assertEquals(1L * 1024L * 1024L, DefaultPresets.Email.targetSizeBytes)
+    fun emailPresetHasTwoHundredKilobyteTargetSize() {
+        assertEquals(200L * 1024L, DefaultPresets.Email.targetSizeBytes)
     }
 
     @Test
