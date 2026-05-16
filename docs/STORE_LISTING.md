@@ -4,6 +4,7 @@
 - **Title** (max 30 chars): ImageShare
 - **Short description** (max 80 chars): Fast, private image resize & share. No permissions, no cloud, no ads.
 - **Category**: Tools (primary) / Photography (secondary)
+- **Support contact email**: `<DECISION REQUIRED: insert Play Console support contact email>`
 
 ## Long description (max 4000 chars)
 ImageShare is a fast, privacy-first utility for preparing images before you send them. Resize, convert, strip metadata, then share — all on your Android device, with no accounts, no ads, no analytics, and no cloud upload.
@@ -19,7 +20,7 @@ ImageShare is a fast, privacy-first utility for preparing images before you send
 ImageShare never asks for broad photo-library access and has no INTERNET permission. Your originals stay where they are; processed copies are kept only in app-private cache until you save or share them.
 
 ## Feature graphic spec
-1024 × 500 px; landscape; should depict the share-and-shrink loop. Reference design: `docs/screenshots/feature_graphic_brief.md`.
+1024 × 500 px; landscape; should depict the share-and-shrink loop. Use `docs/PLAY_STORE_COPY_TEMPLATE.md` for tagline options.
 
 ## Screenshots (REQUIRED)
 - Minimum 2 phone screenshots at 1080×1920+ portrait.
@@ -31,6 +32,7 @@ ImageShare never asks for broad photo-library access and has no INTERNET permiss
   5. Comparison view with draggable before/after split.
 - Tablet screenshots optional but recommended for Tablet feature graphic.
 - Drop captures into `docs/screenshots/phone/` and `docs/screenshots/tablet/`.
+- Follow `docs/SCREENSHOTS_CAPTURE_GUIDE.md` for reproducible capture commands.
 
 ## Content rating
 - **Target age**: 13+
@@ -51,7 +53,7 @@ ImageShare never asks for broad photo-library access and has no INTERNET permiss
 - **Device support**: Android 10 (API 29) and above; all 64-bit and 32-bit devices.
 
 ## Privacy policy
-- **Hosted URL for Play Console**: `<TBD: hosted-URL-for-PRIVACY_POLICY.md>`
+- **Hosted URL for Play Console**: `<TODO: insert hosted privacy policy URL after completing docs/PRIVACY_POLICY_HOSTING.md>`
 - Source copy: `docs/PRIVACY_POLICY.md`
 
 ## Data safety
@@ -59,3 +61,4 @@ See `docs/DATA_SAFETY.md`.
 
 ## Open-source attribution
 See `NOTICE`, `THIRD_PARTY_LICENSES`, and the in-app "Open-source licenses" screen.
+- **Public repository URL**: `<TODO: insert public GitHub repository URL when repo is made public>`
