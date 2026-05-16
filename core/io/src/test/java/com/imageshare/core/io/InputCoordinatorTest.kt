@@ -14,9 +14,13 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.shadows.ShadowBitmapFactory
 import org.robolectric.shadows.ShadowContentResolver
+import org.robolectric.util.NamedStream
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
@@ -109,35 +113,41 @@ class InputCoordinatorTest {
      * stub. The bug shipped because no Robolectric test exercised the
      * openInputStream-returns-non-null success path.
      *
-     * This test only asserts the openInputStream-success branch isn't short-circuited; the
-     * instrumented test enforces the real-platform contract end-to-end with actual
-     * outWidth/outHeight values.
+     * Robolectric's BitmapFactory shadow does not always derive bounds from bytes, so this
+     * test provides explicit hints and also checks the stream was reopened for EXIF after
+     * bounds decode. That makes the test fail if `.use { decodeStream(...) } ?: return null`
+     * is reintroduced: the first stream is consumed, but dimensions remain null and EXIF is
+     * never reached.
      */
     @Test
     fun resolveDoesNotShortCircuitDimensionsWhenOpenStreamSucceeds() = runBlocking {
-        val tempDir = File(RuntimeEnvironment.getApplication().cacheDir, "ic-test").apply { mkdirs() }
-        val jpegFile = File(tempDir, "fixture-32x24.jpg").apply {
-            writeBytes(generateJpegBytes(width = 32, height = 24))
-        }
+        ShadowBitmapFactory.reset()
+        val jpegBytes = generateJpegBytes(width = 32, height = 24)
+        val provider = TestContentProvider(
+            displayName = "fixture.jpg",
+            sizeBytes = jpegBytes.size.toLong(),
+            mimeType = "image/jpeg",
+        )
         val uri = registerProvider(
             authority = "decodable",
-            provider = TestContentProvider(
-                displayName = "fixture.jpg",
-                sizeBytes = jpegFile.length(),
-                mimeType = "image/jpeg",
-                openFileReturn = jpegFile,
-            ),
+            provider = provider,
         )
+        val resolver = RuntimeEnvironment.getApplication().contentResolver
+        var openInputStreamCount = 0
+        shadowOf(resolver).registerInputStreamSupplier(uri) {
+            openInputStreamCount += 1
+            NamedByteArrayInputStream(jpegBytes, uri.toString())
+        }
+        ShadowBitmapFactory.provideWidthAndHeightHints(uri, 32, 24)
 
-        val item = InputCoordinator(RuntimeEnvironment.getApplication().contentResolver).resolve(uri)
+        val item = InputCoordinator(resolver).resolve(uri)
 
         assertEquals("image/jpeg", item.mimeType)
         assertEquals("fixture.jpg", item.displayName)
-        assertEquals(jpegFile.length(), item.sizeBytes)
-        if (item.width != null) {
-            assertEquals(32, item.width)
-            assertEquals(24, item.height)
-        }
+        assertEquals(jpegBytes.size.toLong(), item.sizeBytes)
+        assertEquals(32, item.width)
+        assertEquals(24, item.height)
+        assertEquals(2, openInputStreamCount)
     }
 
     private fun generateJpegBytes(width: Int, height: Int): ByteArray {
@@ -156,6 +166,13 @@ class InputCoordinatorTest {
         ShadowContentResolver.registerProviderInternal(authority, provider)
         return Uri.parse("content://$authority/image")
     }
+}
+
+private class NamedByteArrayInputStream(
+    bytes: ByteArray,
+    private val name: String,
+) : ByteArrayInputStream(bytes), NamedStream {
+    override fun toString(): String = "stream for $name"
 }
 
 private class TestContentProvider(

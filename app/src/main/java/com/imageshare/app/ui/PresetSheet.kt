@@ -616,6 +616,8 @@ private fun SourcesSection(sources: List<SourceItem>) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
+                // CRITICAL: this cap is load-bearing because PresetSheet's parent Column
+                // is vertically scrollable and gives nested LazyColumn infinite max height.
                 .heightIn(max = 180.dp)
                 .testTag("source-list"),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -732,6 +734,8 @@ private fun BatchProgressStatus(progress: BatchOrchestrator.BatchProgress) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
+                // CRITICAL: this cap is load-bearing because PresetSheet's parent Column
+                // is vertically scrollable and gives nested LazyColumn infinite max height.
                 .heightIn(max = 200.dp)
                 .testTag("batch-progress-list"),
             verticalArrangement = Arrangement.spacedBy(6.dp),

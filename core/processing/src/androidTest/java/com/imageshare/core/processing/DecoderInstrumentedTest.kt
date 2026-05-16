@@ -41,6 +41,8 @@ class DecoderInstrumentedTest {
         assertEquals(800, metadata.width)
         assertEquals(600, metadata.height)
         assertEquals(ExifInterface.ORIENTATION_ROTATE_90, metadata.orientation)
+        assertEquals(600, image.sourceWidth)
+        assertEquals(800, image.sourceHeight)
         assertEquals(600, image.bitmap.width)
         assertEquals(800, image.bitmap.height)
         image.bitmap.recycle()

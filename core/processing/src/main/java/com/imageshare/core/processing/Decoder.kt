@@ -69,11 +69,12 @@ class Decoder(private val resolver: ContentResolver) {
             }
         }
         val scaled = scaleToTarget(decoded, targetLongEdgePx)
+        val sourceDimensions = probe.logicalDimensions()
 
         DecodedImage(
             bitmap = scaled,
-            sourceWidth = probe.width,
-            sourceHeight = probe.height,
+            sourceWidth = sourceDimensions.width,
+            sourceHeight = sourceDimensions.height,
             hadAlpha = probe.hasAlpha,
         )
     }
@@ -220,6 +221,21 @@ internal fun orientationMatrixFor(orientation: Int): Matrix = Matrix().apply {
     }
 }
 
+private fun SourceProbe.logicalDimensions(): SourceDimensions =
+    if (orientationSwapsAxes(orientation)) {
+        SourceDimensions(width = height, height = width)
+    } else {
+        SourceDimensions(width = width, height = height)
+    }
+
+private fun orientationSwapsAxes(orientation: Int): Boolean = when (orientation) {
+    ExifInterface.ORIENTATION_ROTATE_90,
+    ExifInterface.ORIENTATION_ROTATE_270,
+    ExifInterface.ORIENTATION_TRANSPOSE,
+    ExifInterface.ORIENTATION_TRANSVERSE -> true
+    else -> false
+}
+
 private fun scaleToTarget(bitmap: Bitmap, targetLongEdgePx: Int): Bitmap {
     val longEdge = max(bitmap.width, bitmap.height)
     if (longEdge <= targetLongEdgePx) {
@@ -231,19 +247,6 @@ private fun scaleToTarget(bitmap: Bitmap, targetLongEdgePx: Int): Bitmap {
     val targetHeight = (bitmap.height * scale).roundToInt().coerceAtLeast(1)
     return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true).also { scaled ->
         if (scaled !== bitmap) {
-            bitmap.recycle()
-        }
-    }
-}
-
-private fun applyOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
-    val matrix = orientationMatrixFor(orientation)
-    if (matrix.isIdentity) {
-        return bitmap
-    }
-
-    return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true).also { oriented ->
-        if (oriented !== bitmap) {
             bitmap.recycle()
         }
     }
@@ -323,3 +326,7 @@ private data class ImageBounds(
     val hasAlphaHint: Boolean,
 )
 
+private data class SourceDimensions(
+    val width: Int,
+    val height: Int,
+)
