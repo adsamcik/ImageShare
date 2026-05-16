@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.FileNotFoundException
 
 class GeneratedImageProvider : ContentProvider() {
@@ -21,7 +22,7 @@ class GeneratedImageProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
         sortOrder: String?,
     ): Cursor = MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)).apply {
-        addRow(arrayOf("generated-input.jpg", imageSizeBytes))
+        addRow(arrayOf<Any>("generated-input.jpg", imageSizeBytes))
     }
 
     override fun getType(uri: Uri): String = "image/jpeg"
@@ -31,13 +32,12 @@ class GeneratedImageProvider : ContentProvider() {
             throw FileNotFoundException("Unsupported mode $mode")
         }
 
-        val (readSide, writeSide) = ParcelFileDescriptor.createPipe()
-        Thread {
-            ParcelFileDescriptor.AutoCloseOutputStream(writeSide).use { output ->
-                output.write(imageBytes)
-            }
-        }.start()
-        return readSide
+        val ctx = context ?: throw FileNotFoundException("Provider has no context")
+        val file = File(ctx.cacheDir, "generated-input.jpg")
+        if (!file.exists() || file.length() != imageSizeBytes) {
+            file.writeBytes(imageBytes)
+        }
+        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
@@ -50,8 +50,11 @@ class GeneratedImageProvider : ContentProvider() {
     ): Int = 0
 
     companion object {
+        const val IMAGE_WIDTH = 32
+        const val IMAGE_HEIGHT = 24
+
         val imageBytes: ByteArray by lazy {
-            val bitmap = Bitmap.createBitmap(3, 2, Bitmap.Config.ARGB_8888)
+            val bitmap = Bitmap.createBitmap(IMAGE_WIDTH, IMAGE_HEIGHT, Bitmap.Config.ARGB_8888)
             try {
                 ByteArrayOutputStream().use { output ->
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)

@@ -102,9 +102,10 @@ class InputCoordinator(private val resolver: ContentResolver) {
             inJustDecodeBounds = true
         }
 
-        resolver.openInputStream(uri)?.use { input ->
+        val stream = resolver.openInputStream(uri) ?: return null
+        stream.use { input ->
             BitmapFactory.decodeStream(input, null, options)
-        } ?: return null
+        }
 
         return if (options.outWidth > 0 && options.outHeight > 0) {
             Dimensions(width = options.outWidth, height = options.outHeight)
