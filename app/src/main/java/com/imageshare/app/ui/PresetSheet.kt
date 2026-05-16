@@ -298,103 +298,101 @@ fun PresetSheet(
     val coroutineScope = rememberCoroutineScope()
     var overflowMenuExpanded by remember { mutableStateOf(false) }
 
-    ImageShareTheme {
-        Surface(
-            modifier = modifier
-                .fillMaxSize()
-                .semantics { testTagsAsResourceId = true },
-        ) {
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = { Text(stringResource(R.string.top_bar_title)) },
-                        actions = {
-                            IconButton(onClick = { overflowMenuExpanded = true }) {
-                                Icon(
-                                    Icons.Filled.MoreVert,
-                                    contentDescription = stringResource(R.string.licenses_overflow_menu_a11y),
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = overflowMenuExpanded,
-                                onDismissRequest = { overflowMenuExpanded = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.licenses_screen_title)) },
-                                    onClick = {
-                                        overflowMenuExpanded = false
-                                        onOpenLicenses()
-                                    },
-                                )
-                            }
-                        },
-                    )
-                },
-                snackbarHost = { SnackbarHost(snackbarHostState) },
-                bottomBar = {
-                    Surface(
-                        tonalElevation = 3.dp,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        ProcessButtons(
-                            processEnabled = sources.isNotEmpty() && !isProcessing && !upscaleBlocked,
-                            isProcessing = isProcessing,
-                            saveEnabled = hasSuccessfulResult,
-                            onProcessAndShare = onProcessAndShare,
-                            onCancelBatch = onCancelBatch,
-                            onSaveCopy = onSaveCopy,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                                .navigationBarsPadding(),
-                        )
-                    }
-                },
-            ) { paddingValues ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+    Surface(
+        modifier = modifier
+            .fillMaxSize()
+            .semantics { testTagsAsResourceId = true },
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.top_bar_title)) },
+                    actions = {
+                        IconButton(onClick = { overflowMenuExpanded = true }) {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = stringResource(R.string.licenses_overflow_menu_a11y),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = overflowMenuExpanded,
+                            onDismissRequest = { overflowMenuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.licenses_screen_title)) },
+                                onClick = {
+                                    overflowMenuExpanded = false
+                                    onOpenLicenses()
+                                },
+                            )
+                        }
+                    },
+                )
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            bottomBar = {
+                Surface(
+                    tonalElevation = 3.dp,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    if (sources.isEmpty()) {
-                        EmptyState(
-                            onPickFromGallery = onPickFromGallery,
-                            onOpenDocuments = onOpenDocuments,
-                            recentsUris = recentsUris,
-                            onRecentSelected = onRecentSelected,
-                            onRecentRemoved = onRecentRemoved,
-                        )
-                    } else {
-                        SourcesSection(sources)
-                        PresetsSection(presets, selectedPreset, onPresetSelected)
-                        effectivePreset?.let { PresetSummary(it) }
-                        selectedPreset?.let {
-                            Text(stringResource(R.string.resize_section_title), style = MaterialTheme.typography.titleMedium)
-                            CustomDimensionsCard(
-                                sources = sources,
-                                preset = it,
-                                customOverride = customOverride,
-                                onCustomOverride = onCustomOverride,
-                            )
-                        }
-                        if (upscaleBlocked) {
-                            Text(
-                                text = stringResource(R.string.upscale_blocked_warning),
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.testTag("upscale-warning"),
-                            )
-                        }
-                        AdvancedSection(runInBackground, onRunInBackgroundChanged)
-                        StatusLine(processingState)
-                        ResultSummary(
-                            processingState = processingState,
-                            effectiveMetadata = effectivePreset?.metadata ?: selectedPreset?.metadata ?: MetadataPolicy.StripAll,
-                            onExpandResult = onExpandResult,
+                    ProcessButtons(
+                        processEnabled = sources.isNotEmpty() && !isProcessing && !upscaleBlocked,
+                        isProcessing = isProcessing,
+                        saveEnabled = hasSuccessfulResult,
+                        onProcessAndShare = onProcessAndShare,
+                        onCancelBatch = onCancelBatch,
+                        onSaveCopy = onSaveCopy,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .navigationBarsPadding(),
+                    )
+                }
+            },
+        ) { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                if (sources.isEmpty()) {
+                    EmptyState(
+                        onPickFromGallery = onPickFromGallery,
+                        onOpenDocuments = onOpenDocuments,
+                        recentsUris = recentsUris,
+                        onRecentSelected = onRecentSelected,
+                        onRecentRemoved = onRecentRemoved,
+                    )
+                } else {
+                    SourcesSection(sources)
+                    PresetsSection(presets, selectedPreset, onPresetSelected)
+                    effectivePreset?.let { PresetSummary(it) }
+                    selectedPreset?.let {
+                        Text(stringResource(R.string.resize_section_title), style = MaterialTheme.typography.titleMedium)
+                        CustomDimensionsCard(
+                            sources = sources,
+                            preset = it,
+                            customOverride = customOverride,
+                            onCustomOverride = onCustomOverride,
                         )
                     }
+                    if (upscaleBlocked) {
+                        Text(
+                            text = stringResource(R.string.upscale_blocked_warning),
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.testTag("upscale-warning"),
+                        )
+                    }
+                    AdvancedSection(runInBackground, onRunInBackgroundChanged)
+                    StatusLine(processingState)
+                    ResultSummary(
+                        processingState = processingState,
+                        effectiveMetadata = effectivePreset?.metadata ?: selectedPreset?.metadata ?: MetadataPolicy.StripAll,
+                        onExpandResult = onExpandResult,
+                    )
                 }
             }
         }
