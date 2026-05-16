@@ -298,7 +298,7 @@ fun PresetSheet(
     val coroutineScope = rememberCoroutineScope()
     var overflowMenuExpanded by remember { mutableStateOf(false) }
 
-    MaterialTheme {
+    ImageShareTheme {
         Surface(
             modifier = modifier
                 .fillMaxSize()

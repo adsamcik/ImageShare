@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import com.imageshare.app.ui.ImageShareTheme
 import com.imageshare.app.ui.MainScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,7 +21,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MainScreen(viewModel) }
+        setContent {
+            ImageShareTheme {
+                MainScreen(viewModel)
+            }
+        }
         sweepCachesOnStart()
         if (savedInstanceState == null) {
             handleShareIntent(intent)
