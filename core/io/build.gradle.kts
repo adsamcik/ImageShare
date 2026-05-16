@@ -27,6 +27,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.exifinterface)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

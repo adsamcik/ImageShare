@@ -5,6 +5,7 @@ import android.database.Cursor
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -107,11 +108,31 @@ class InputCoordinator(private val resolver: ContentResolver) {
             BitmapFactory.decodeStream(input, null, options)
         }
 
-        return if (options.outWidth > 0 && options.outHeight > 0) {
-            Dimensions(width = options.outWidth, height = options.outHeight)
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null
+
+        return if (orientationSwapsAxes(readExifOrientation(uri))) {
+            Dimensions(width = options.outHeight, height = options.outWidth)
         } else {
-            null
+            Dimensions(width = options.outWidth, height = options.outHeight)
         }
+    }
+
+    private fun readExifOrientation(uri: Uri): Int =
+        runCatching {
+            resolver.openInputStream(uri)?.use { input ->
+                ExifInterface(input).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL,
+                )
+            } ?: ExifInterface.ORIENTATION_NORMAL
+        }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+    private fun orientationSwapsAxes(orientation: Int): Boolean = when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90,
+        ExifInterface.ORIENTATION_ROTATE_270,
+        ExifInterface.ORIENTATION_TRANSPOSE,
+        ExifInterface.ORIENTATION_TRANSVERSE -> true
+        else -> false
     }
 }
 
