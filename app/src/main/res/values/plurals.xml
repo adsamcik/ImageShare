@@ -15,6 +15,10 @@
         <item quantity="one">Saved %d image to Pictures/ImageShare.</item>
         <item quantity="other">Saved %d images to Pictures/ImageShare.</item>
     </plurals>
+    <plurals name="process_summary">
+        <item quantity="one">Will process %1$d image, %2$s</item>
+        <item quantity="other">Will process %1$d images, %2$s</item>
+    </plurals>
     <plurals name="batch_cancelled_partial">
         <item quantity="one">Batch cancelled. 1 image saved.</item>
         <item quantity="other">Batch cancelled. %d images saved.</item>

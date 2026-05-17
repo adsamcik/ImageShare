@@ -13,16 +13,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Text
-import androidx.compose.material3.TooltipAnchorPosition
-import androidx.compose.material3.TooltipBox
-import androidx.compose.material3.TooltipDefaults
-import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +37,7 @@ import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.feature.preset.MetadataPolicy
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BeforeAfterCard(
     result: PresetPipeline.Result.Success,
@@ -126,22 +120,17 @@ fun BeforeAfterCard(
                 MetricCell(stringResource(R.string.metadata_label), metadata)
             }
             if (reduction != null && reduction < 0) {
-                TooltipBox(
-                    positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-                    tooltip = { PlainTooltip { Text(stringResource(R.string.reduction_neg_warning)) } },
-                    state = rememberTooltipState(),
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_warning_24),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                        Text(
-                            text = stringResource(R.string.reduction_neg_warning),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
+                val warningText = stringResource(R.string.reduction_neg_warning)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_warning_24),
+                        contentDescription = warningText,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        text = warningText,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
             OutlinedButton(

@@ -200,7 +200,7 @@ class PresetSheetAccessibilityTest {
                         it.contains("after", ignoreCase = true)
                 }
             },
-        ).assertIsDisplayed()
+        ).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("view-comparison-button", useUnmergedTree = true)
             .performScrollTo()
             .performClick()

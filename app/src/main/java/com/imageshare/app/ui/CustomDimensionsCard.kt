@@ -166,7 +166,21 @@ private fun CustomDimensionsContent(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ResizeModeSelector(mode) {
+        OriginalSizeToggle(
+            checked = mode == ResizeEditMode.Original,
+            onCheckedChange = { checked ->
+                mode = if (checked) {
+                    ResizeEditMode.Original
+                } else {
+                    baseResize.toEditMode().takeUnless { it == ResizeEditMode.Original } ?: ResizeEditMode.Percentage
+                }
+                dirty = true
+            },
+        )
+        ResizeModeSelector(
+            selected = mode,
+            enabled = mode != ResizeEditMode.Original,
+        ) {
             mode = it
             dirty = true
         }
@@ -225,6 +239,7 @@ private fun CustomDimensionsContent(
                 allowUpscale = false
                 onCustomOverride(null)
             },
+            enabled = dirty || customOverride != null,
             modifier = Modifier.testTag("reset-dimensions-button"),
         ) {
             Text(stringResource(R.string.reset_dimensions))
@@ -236,19 +251,52 @@ private fun CustomDimensionsContent(
 @Composable
 private fun ResizeModeSelector(
     selected: ResizeEditMode,
+    enabled: Boolean,
     onSelected: (ResizeEditMode) -> Unit,
 ) {
-    val modes = ResizeEditMode.entries
+    val modes = listOf(ResizeEditMode.Percentage, ResizeEditMode.LongEdge, ResizeEditMode.Exact)
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         modes.forEachIndexed { index, mode ->
             SegmentedButton(
                 selected = selected == mode,
                 onClick = { onSelected(mode) },
+                enabled = enabled,
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
                 label = { Text(mode.label()) },
                 modifier = Modifier.testTag(mode.testTag),
             )
         }
+    }
+}
+
+@Composable
+private fun OriginalSizeToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
+            .semantics(mergeDescendants = true) { }
+            .padding(vertical = 8.dp)
+            .testTag(ResizeEditMode.Original.testTag),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.use_original_size),
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+        )
     }
 }
 

@@ -87,10 +87,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -99,6 +104,9 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.verticalScroll
@@ -440,6 +448,7 @@ fun PresetSheet(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     ProcessButtons(
+                        sources = sources,
                         processEnabled = sources.isNotEmpty() && !isProcessing && !upscaleBlocked,
                         isProcessing = isProcessing,
                         saveEnabled = hasSuccessfulResult,
@@ -569,6 +578,7 @@ private fun AdvancedSection(
                 Text(
                     text = stringResource(R.string.run_in_background_description),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
             Switch(checked = runInBackground, onCheckedChange = null)
@@ -593,6 +603,7 @@ private fun AdvancedSection(
                 Text(
                     text = stringResource(R.string.auto_process_on_share_description),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
             Switch(checked = autoProcessOnShare, onCheckedChange = null)
@@ -612,15 +623,31 @@ private fun EmptyState(
     val pickLabel = stringResource(R.string.pick_from_gallery)
     val openDocumentsLabel = stringResource(R.string.open_documents_button)
     val openDocumentsTooltip = stringResource(R.string.open_documents_tooltip)
+    val emptyStateDescription = stringResource(R.string.empty_state_description)
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) { contentDescription = emptyStateDescription },
+        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        Icon(
+            imageVector = Icons.Outlined.AddPhotoAlternate,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .size(80.dp)
+                .padding(bottom = 4.dp),
+        )
         Text(
             text = stringResource(R.string.empty_state_title),
             style = MaterialTheme.typography.headlineSmall,
+            textAlign = TextAlign.Center,
         )
-        Text(stringResource(R.string.empty_state_hint))
+        Text(
+            text = stringResource(R.string.empty_state_hint),
+            textAlign = TextAlign.Center,
+        )
         Button(
             onClick = onPickFromGallery,
             modifier = Modifier.semantics { contentDescription = pickLabel },
@@ -658,6 +685,7 @@ private fun RecentsSection(
     onRecentSelected: (Uri) -> Unit,
     onRecentRemoved: (Uri) -> Unit,
 ) {
+    val reverseLayout = LocalLayoutDirection.current == LayoutDirection.Rtl
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.recents_section_title), style = MaterialTheme.typography.titleMedium)
         LazyRow(
@@ -666,6 +694,7 @@ private fun RecentsSection(
                 .padding(vertical = 8.dp)
                 .testTag("recents-list"),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            reverseLayout = reverseLayout,
         ) {
             itemsIndexed(recentsUris) { index, entry ->
                 RecentUriChip(
@@ -700,60 +729,76 @@ private fun RecentUriChip(
     } ?: stringResource(R.string.recents_chip_a11y_indexed, index)
     val chipActionLabel = stringResource(R.string.recents_chip_action_label)
     val removeDescription = stringResource(R.string.recents_remove_a11y)
+    val displayName = entry.displayName ?: stringResource(R.string.unnamed_image)
 
-    Box(
+    Column(
         modifier = Modifier
             .width(88.dp)
             .heightIn(min = 72.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        AsyncImage(
-            model = imageRequest,
-            contentDescription = chipDescription,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .size(72.dp)
-                .clip(MaterialTheme.shapes.medium)
-                .clickable(
-                    onClickLabel = chipActionLabel,
-                    onClick = { onSelected() },
-                )
-                .semantics { role = Role.Button },
-        )
         Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 6.dp, y = (-6).dp)
-                .size(32.dp),
+            modifier = Modifier.width(88.dp),
         ) {
-            Surface(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                shape = CircleShape,
+            AsyncImage(
+                model = imageRequest,
+                contentDescription = chipDescription,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(32.dp)
-                    .align(Alignment.Center),
-            ) {}
+                    .align(Alignment.CenterStart)
+                    .size(72.dp)
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable(
+                        onClickLabel = chipActionLabel,
+                        onClick = { onSelected() },
+                    )
+                    .semantics { role = Role.Button },
+            )
             Box(
                 modifier = Modifier
-                    .matchParentSize()
-                    .clip(CircleShape)
-                    .clickable(
-                        onClickLabel = removeDescription,
-                        onClick = onRemoved,
-                    )
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = removeDescription
-                    },
-                contentAlignment = Alignment.Center,
+                    .align(Alignment.TopEnd)
+                    .offset(x = 6.dp, y = (-6).dp)
+                    .size(32.dp),
             ) {
-                Icon(
-                    Icons.Filled.Close,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .align(Alignment.Center),
+                ) {}
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(CircleShape)
+                        .clickable(
+                            onClickLabel = removeDescription,
+                            onClick = onRemoved,
+                        )
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = removeDescription
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
+        Text(
+            text = displayName,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .width(88.dp)
+                .padding(top = 4.dp),
+        )
     }
 }
 
@@ -973,6 +1018,7 @@ private fun FailureResult(result: PresetPipeline.Result.Failure) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProcessButtons(
+    sources: List<SourceItem>,
     processEnabled: Boolean,
     isProcessing: Boolean,
     saveEnabled: Boolean,
@@ -983,6 +1029,23 @@ private fun ProcessButtons(
 ) {
     val processDescription = stringResource(R.string.process_and_share_description)
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (sources.isNotEmpty()) {
+            val totalBytes = sources.mapNotNull { it.sizeBytes }.sum()
+            Text(
+                text = quantityStringResource(
+                    R.plurals.process_summary,
+                    sources.size,
+                    sources.size,
+                    fileSizeText(totalBytes),
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = onProcessAndShare,
@@ -1147,3 +1210,60 @@ private fun quantityStringResource(id: Int, quantity: Int, vararg formatArgs: An
     val resources = LocalContext.current.resources
     return resources.getQuantityString(id, quantity, *formatArgs)
 }
+
+private val Icons.Outlined.AddPhotoAlternate: ImageVector
+    get() = AddPhotoAlternateIcon
+
+// Approximation of Material Icons Extended AddPhotoAlternate to avoid adding a dependency.
+private val AddPhotoAlternateIcon: ImageVector = ImageVector.Builder(
+    name = "AddPhotoAlternate",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+).apply {
+    path(fill = SolidColor(Color.Black)) {
+        moveTo(5f, 5f)
+        lineTo(5f, 19f)
+        lineTo(12f, 19f)
+        lineTo(12f, 17f)
+        lineTo(7f, 17f)
+        lineTo(10.5f, 12.5f)
+        lineTo(13f, 15.5f)
+        lineTo(15.25f, 12.5f)
+        lineTo(17f, 14.85f)
+        lineTo(17f, 11f)
+        lineTo(19f, 11f)
+        lineTo(19f, 5f)
+        close()
+        moveTo(3f, 3f)
+        lineTo(21f, 3f)
+        lineTo(21f, 12f)
+        lineTo(19f, 12f)
+        lineTo(19f, 5f)
+        lineTo(5f, 5f)
+        lineTo(5f, 19f)
+        lineTo(12f, 19f)
+        lineTo(12f, 21f)
+        lineTo(3f, 21f)
+        close()
+        moveTo(8.5f, 8f)
+        lineTo(11f, 8f)
+        lineTo(11f, 10.5f)
+        lineTo(8.5f, 10.5f)
+        close()
+        moveTo(18f, 14f)
+        lineTo(18f, 17f)
+        lineTo(21f, 17f)
+        lineTo(21f, 19f)
+        lineTo(18f, 19f)
+        lineTo(18f, 22f)
+        lineTo(16f, 22f)
+        lineTo(16f, 19f)
+        lineTo(13f, 19f)
+        lineTo(13f, 17f)
+        lineTo(16f, 17f)
+        lineTo(16f, 14f)
+        close()
+    }
+}.build()

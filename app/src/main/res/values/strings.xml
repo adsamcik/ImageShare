@@ -43,6 +43,7 @@
     <string name="resize_mode_exact">Exact</string>
     <string name="resize_mode_percentage">Percentage</string>
     <string name="resize_mode_original">Original</string>
+    <string name="use_original_size">Use original size</string>
     <string name="long_edge_input_label">Long edge (px)</string>
     <string name="long_edge_input_error">Long edge must be at least 16 pixels.</string>
     <string name="width_input_label">Width</string>
