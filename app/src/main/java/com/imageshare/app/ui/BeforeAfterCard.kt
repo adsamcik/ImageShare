@@ -124,7 +124,7 @@ fun BeforeAfterCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(
                         painter = painterResource(R.drawable.ic_warning_24),
-                        contentDescription = warningText,
+                        contentDescription = null,
                         tint = MaterialTheme.colorScheme.error,
                     )
                     Text(

@@ -19,6 +19,10 @@
         <item quantity="one">Will process %1$d image, %2$s</item>
         <item quantity="other">Will process %1$d images, %2$s</item>
     </plurals>
+    <plurals name="process_summary_unknown_size">
+        <item quantity="one">Will process 1 image</item>
+        <item quantity="other">Will process %d images</item>
+    </plurals>
     <plurals name="batch_cancelled_partial">
         <item quantity="one">Batch cancelled. 1 image saved.</item>
         <item quantity="other">Batch cancelled. %d images saved.</item>

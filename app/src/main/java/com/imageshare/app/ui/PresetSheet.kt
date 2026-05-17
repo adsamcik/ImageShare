@@ -87,15 +87,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -106,7 +102,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.verticalScroll
@@ -632,7 +627,7 @@ private fun EmptyState(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Icon(
-            imageVector = Icons.Outlined.AddPhotoAlternate,
+            painter = painterResource(R.drawable.ic_add_photo_alternate),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
@@ -685,7 +680,6 @@ private fun RecentsSection(
     onRecentSelected: (Uri) -> Unit,
     onRecentRemoved: (Uri) -> Unit,
 ) {
-    val reverseLayout = LocalLayoutDirection.current == LayoutDirection.Rtl
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.recents_section_title), style = MaterialTheme.typography.titleMedium)
         LazyRow(
@@ -694,7 +688,6 @@ private fun RecentsSection(
                 .padding(vertical = 8.dp)
                 .testTag("recents-list"),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            reverseLayout = reverseLayout,
         ) {
             itemsIndexed(recentsUris) { index, entry ->
                 RecentUriChip(
@@ -1031,13 +1024,22 @@ private fun ProcessButtons(
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (sources.isNotEmpty()) {
             val totalBytes = sources.mapNotNull { it.sizeBytes }.sum()
-            Text(
-                text = quantityStringResource(
+            val summaryText = if (totalBytes > 0L) {
+                quantityStringResource(
                     R.plurals.process_summary,
                     sources.size,
                     sources.size,
                     fileSizeText(totalBytes),
-                ),
+                )
+            } else {
+                quantityStringResource(
+                    R.plurals.process_summary_unknown_size,
+                    sources.size,
+                    sources.size,
+                )
+            }
+            Text(
+                text = summaryText,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 4.dp),
@@ -1210,60 +1212,3 @@ private fun quantityStringResource(id: Int, quantity: Int, vararg formatArgs: An
     val resources = LocalContext.current.resources
     return resources.getQuantityString(id, quantity, *formatArgs)
 }
-
-private val Icons.Outlined.AddPhotoAlternate: ImageVector
-    get() = AddPhotoAlternateIcon
-
-// Approximation of Material Icons Extended AddPhotoAlternate to avoid adding a dependency.
-private val AddPhotoAlternateIcon: ImageVector = ImageVector.Builder(
-    name = "AddPhotoAlternate",
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f,
-).apply {
-    path(fill = SolidColor(Color.Black)) {
-        moveTo(5f, 5f)
-        lineTo(5f, 19f)
-        lineTo(12f, 19f)
-        lineTo(12f, 17f)
-        lineTo(7f, 17f)
-        lineTo(10.5f, 12.5f)
-        lineTo(13f, 15.5f)
-        lineTo(15.25f, 12.5f)
-        lineTo(17f, 14.85f)
-        lineTo(17f, 11f)
-        lineTo(19f, 11f)
-        lineTo(19f, 5f)
-        close()
-        moveTo(3f, 3f)
-        lineTo(21f, 3f)
-        lineTo(21f, 12f)
-        lineTo(19f, 12f)
-        lineTo(19f, 5f)
-        lineTo(5f, 5f)
-        lineTo(5f, 19f)
-        lineTo(12f, 19f)
-        lineTo(12f, 21f)
-        lineTo(3f, 21f)
-        close()
-        moveTo(8.5f, 8f)
-        lineTo(11f, 8f)
-        lineTo(11f, 10.5f)
-        lineTo(8.5f, 10.5f)
-        close()
-        moveTo(18f, 14f)
-        lineTo(18f, 17f)
-        lineTo(21f, 17f)
-        lineTo(21f, 19f)
-        lineTo(18f, 19f)
-        lineTo(18f, 22f)
-        lineTo(16f, 22f)
-        lineTo(16f, 19f)
-        lineTo(13f, 19f)
-        lineTo(13f, 17f)
-        lineTo(16f, 17f)
-        lineTo(16f, 14f)
-        close()
-    }
-}.build()
