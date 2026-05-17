@@ -200,6 +200,9 @@ class MainViewModelTest {
             RecentContentProvider(displayName = "recent.jpg", sizeBytes = 123L, mimeType = "image/jpeg"),
         )
         val recentUri = Uri.parse("content://$authority/image")
+        org.robolectric.Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(recentUri) {
+            throw FileNotFoundException("No dimensions fixture needed for $recentUri")
+        }
 
         viewModel.onRecentSelected(recentUri)
         var attempts = 0

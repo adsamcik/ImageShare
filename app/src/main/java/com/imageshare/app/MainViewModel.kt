@@ -182,7 +182,12 @@ class MainViewModel(
 
     fun onProcessAndShare() {
         val currentSources = sources.value
-        if (currentSources.isEmpty() || mutableProcessingState.value is ProcessingState.Running) return
+        if (
+            currentSources.isEmpty() ||
+            mutableProcessingState.value is ProcessingState.Running ||
+            currentBatchJob != null ||
+            activeWorkJobId != null
+        ) return
         val preset = effectivePreset.value ?: return
         val jobId = newJobId()
         if (shouldRunWithWorkManager(currentSources.size, _runInBackground.value)) {

@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider
+            android:name="com.imageshare.core.processing.EmptyImageProvider"
+            android:authorities="com.imageshare.core.processing.test.empty"
+            android:exported="false" />
+    </application>
+</manifest>

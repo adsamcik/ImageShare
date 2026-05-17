@@ -41,14 +41,17 @@ sealed class IntakeError(message: String, cause: Throwable? = null) : Exception(
 class InputCoordinator(private val resolver: ContentResolver) {
     suspend fun resolve(uri: Uri): SourceItem = withContext(Dispatchers.IO) {
         var firstFailure: Throwable? = null
+        var grantLost = false
 
         fun recordFailure(throwable: Throwable) {
+            val recorded = if (throwable is SecurityException) {
+                grantLost = true
+                IntakeError.GrantLost(uri)
+            } else {
+                throwable
+            }
             if (firstFailure == null) {
-                firstFailure = if (throwable is SecurityException) {
-                    IntakeError.GrantLost(uri)
-                } else {
-                    throwable
-                }
+                firstFailure = recorded
             }
         }
 
@@ -71,7 +74,7 @@ class InputCoordinator(private val resolver: ContentResolver) {
             height = dimensions?.height,
         )
 
-        if (!item.hasResolvedData()) {
+        if (grantLost || !item.hasResolvedData()) {
             throw IntakeError.QueryFailed(
                 uri = uri,
                 cause = firstFailure ?: IllegalStateException("No metadata could be resolved for $uri"),

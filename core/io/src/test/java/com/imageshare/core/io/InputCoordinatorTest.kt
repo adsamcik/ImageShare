@@ -48,6 +48,9 @@ class InputCoordinatorTest {
                 openFailure = FileNotFoundException("No image bytes"),
             ),
         )
+        shadowOf(RuntimeEnvironment.getApplication().contentResolver).registerInputStreamSupplier(uri) {
+            throw FileNotFoundException("No image bytes")
+        }
 
         val item = InputCoordinator(RuntimeEnvironment.getApplication().contentResolver).resolve(uri)
 
@@ -60,7 +63,7 @@ class InputCoordinatorTest {
     }
 
     @Test
-    fun resolveKeepsPartialDataWhenInputStreamGrantIsLost() = runBlocking {
+    fun resolveThrowsQueryFailedWhenInputStreamGrantIsLostAfterMetadataQuery() {
         val uri = registerProvider(
             authority = "partial",
             provider = TestContentProvider(
@@ -70,14 +73,18 @@ class InputCoordinatorTest {
                 openFailure = SecurityException("Grant lost"),
             ),
         )
+        shadowOf(RuntimeEnvironment.getApplication().contentResolver).registerInputStreamSupplier(uri) {
+            throw SecurityException("Grant lost")
+        }
 
-        val item = InputCoordinator(RuntimeEnvironment.getApplication().contentResolver).resolve(uri)
+        val error = assertThrows(IntakeError.QueryFailed::class.java) {
+            runBlocking {
+                InputCoordinator(RuntimeEnvironment.getApplication().contentResolver).resolve(uri)
+            }
+        }
 
-        assertEquals("image/jpeg", item.mimeType)
-        assertEquals("picked.jpg", item.displayName)
-        assertEquals(42L, item.sizeBytes)
-        assertNull(item.width)
-        assertNull(item.height)
+        assertEquals(uri, error.uri)
+        assertEquals(IntakeError.GrantLost(uri), error.cause)
     }
 
     @Test

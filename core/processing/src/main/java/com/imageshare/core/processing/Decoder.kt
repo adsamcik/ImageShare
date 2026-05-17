@@ -35,6 +35,7 @@ data class DecodedImage(
 sealed class DecodeError(message: String, cause: Throwable? = null) : Exception(message, cause) {
     data object UnsupportedFormat : DecodeError("Unsupported image format")
     data object Corrupt : DecodeError("Corrupt image data")
+    data object OOM : DecodeError("Insufficient memory to decode image")
     data class IoError(override val cause: Throwable) : DecodeError("Unable to read image", cause)
 }
 
@@ -265,6 +266,8 @@ private inline fun <T> mapDecodeErrors(block: () -> T): T = try {
     throw DecodeError.IoError(error)
 } catch (error: IllegalArgumentException) {
     throw DecodeError.Corrupt
+} catch (error: OutOfMemoryError) {
+    throw DecodeError.OOM
 }
 
 private fun ByteArray.isPngHeader(): Boolean =
