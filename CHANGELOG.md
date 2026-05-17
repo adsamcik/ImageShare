@@ -5,6 +5,55 @@ All notable changes to ImageShare are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-05-17
+
+Second release. Smart sharing, design polish, deeper test coverage, and the v2.0 Transform API RFC.
+
+### Added
+
+- **Smart-share chooser** — custom in-app share dialog showing the user's top 3 most-shared apps as chips, then an alphabetical "All apps" list, with a "More…" fallback to the system chooser. Powered by a new `SharingTargetsRepository` (DataStore-backed) that tracks usage counts and recency. Top-K observation, LRU eviction when at the 50-entry cap, ImageShare-self filter.
+- **Auto-process when shared in** preference (under "Advanced", default off) — when on, `ACTION_SEND` from another app immediately processes with the current preset and goes straight to the share chooser, skipping the source-review screen.
+- **Empty-state illustration** — Material Symbols `add_photo_alternate` icon above the "Hello ImageShare" title so the empty home screen reads as "drop an image" rather than "loading".
+- **Recents chip filename labels** — visible 1-line truncated filename under each recent thumbnail so visually-similar recents are distinguishable at a glance.
+- **Process summary caption** — "Will process N images, M MB" above the Process button (uses Android `<plurals>`; falls back to image-count-only when total bytes are unknown).
+- **22 new instrumented + Robolectric tests** covering source-format chaos, adversarial inputs (truncated/lying-extension/massive/16-bit PNG/CMYK), permission revocation mid-flight, memory pressure, race conditions (double-tap, rapid preset switching, concurrent intent), and boundary dimensions (1×1, 10000×100, etc.).
+- **Transform API RFC** (`docs/RFCs/0001-transform-api.md`, 5,769 words) — design document for v2.0's ContentProvider-based silent transform API. Covers URI schema, security model, FIFO cache policy, versioning, sample code, threat model (13 rows), and 7 open product/business questions. Two Opus 4.7 review passes; approved.
+
+### Fixed (3 production bugs caught by chaos testing)
+
+- **Double-tap restart race** — rapid double-tap on "Process & share" could enqueue two batches before state transitioned to Running. `MainViewModel` guard tightened to check both `currentBatchJob != null` and `activeWorkJobId != null`.
+- **Partial-`SourceItem` grant loss** — when `openInputStream` threw `SecurityException` after `query()` succeeded, `InputCoordinator.resolve` silently returned a half-loaded `SourceItem` with metadata but no dimensions and no `GrantLost` signal. Now any `SecurityException` always surfaces as `IntakeError.QueryFailed(cause = GrantLost)` regardless of partial successes.
+- **`Decoder` did not type `OutOfMemoryError`** — `BitmapFactory`/`ImageDecoder` OOM on adversarial dimensions propagated as raw `Error`, crashing the worker. Decoder now catches and wraps as new `DecodeError.OOM`.
+
+### Changed
+
+- **Material 3 segmented buttons** for `ResizeMode` reduced from 4 to 3 (Original moved to a "Use original size" toggle above the segments) — fits 360 dp width without truncation, Hick's-Law reduction.
+- **Reset-to-preset-default** button now disabled when nothing has been changed (`!dirty && customOverride == null`).
+- **Recents `LazyRow`** correctly honors RTL locales via native `LayoutDirection` mirroring (an earlier attempt to force `reverseLayout = true` in RTL inverted the intended order; reverted).
+- **`BeforeAfterCard` reduction-warning icon** no longer wraps a tooltip that repeats the visible text. Icon `contentDescription` is null; TalkBack reads the message once instead of twice.
+- **`Run in background` + `Auto-process when shared` subtitle text** uses explicit `onSurface` colour (was relying on `bodySmall`'s default `onSurfaceVariant`, which dropped contrast under dynamic-colour drift on red/orange wallpapers).
+
+### v1.0-tooth-pulling improvements
+
+- **`MainViewModelTest.assertEnqueuedEventually`** flaky helper replaced with deterministic `advanceUntilIdle()`-based synchronization. Stable across 3 consecutive runs.
+- **Tooltip API migration** — `rememberPlainTooltipPositionProvider` → `rememberTooltipPositionProvider` at all 4 call sites (Material 3 deprecation).
+- **`PresetPipeline` `SwitchToPng` branch** — replaced tautological `if/else` (both arms returning `Allow`) with explicit `when` mapping format to `AlphaPolicy`. JPEG with `SwitchToPng` policy now safely falls back to `FillBackground(WHITE)` instead of failing at encode (latent fix for future presets).
+
+### Test coverage
+
+- Unit tests: ~135 → ~155 across `:app`, `:core:io`, `:core:processing`, `:feature:preset`.
+- Connected tests: 56 → 72 on `Medium_Phone (API 36)` emulator.
+- Total: 0 failures, 8 skipped (HEIF/AVIF hardware codec graceful skips on x86_64 emulator).
+
+### Architecture decisions
+
+- ImageShareTheme inner-wrap in `PresetSheet` removed — outer `MainActivity` `ImageShareTheme` is sufficient for production; nested-wrap caused timing-sensitive Compose UI test regression in v1.0 → fixed before tag.
+- `SharingTargetsRepository` uses DataStore + `org.json` (no new deps; serializes as JSON-encoded string in a single preferences key).
+- `Icons.Outlined.AddPhotoAlternate` shipped as a hand-drawn vector drawable (not `material-icons-extended` dependency) to save ~80 KB APK size. Drawable cites Material Symbols as source.
+
+[1.1.0]: https://example.com/imageshare/releases/tag/v1.1.0
+[1.0.0]: https://example.com/imageshare/releases/tag/v1.0.0
+
 ## [1.0.0] — 2026-05-16
 
 First release. Privacy-first Android image processing utility.
