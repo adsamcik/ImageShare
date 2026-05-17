@@ -369,17 +369,15 @@ class MainViewModelTest {
 
         viewModel.onPostNotificationsPermissionResult(granted = false)
         assertEnqueuedEventually(scheduler)
-        var completionAttempts = 0
-        while (viewModel.processingState.value !is ProcessingState.Done && completionAttempts < 20) {
-            advanceUntilIdle()
-            completionAttempts += 1
-        }
+        viewModel.processingState.first { it is ProcessingState.Done }
 
         viewModel.onProcessAndShareRequestingNotificationsIfNeeded(
             postNotificationsGranted = false,
             requestPostNotifications = { permissionRequests += 1 },
         )
-        assertEnqueuedEventually(scheduler)
+        // This is a later explicit request after the first background job completed, not an in-flight
+        // double tap; the chaos-workstream guard should suppress only active duplicate starts.
+        assertEnqueuedEventually(scheduler, expectedCount = 2)
         assertEquals(1, permissionRequests)
         assertEquals(true, viewModel.postNotificationsPermissionAskedThisSession)
     }

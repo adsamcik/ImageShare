@@ -44,9 +44,12 @@ class DataStoreSharingTargetsRepository(
                 count = (existing?.count ?: 0) + 1,
                 lastUsedAt = clock(),
             )
+            if (current.size > MAX_TARGETS) {
+                val eviction = current.values.minWith(targetEvictionOrdering)
+                current.remove(eviction.componentName)
+            }
             prefs[USAGE_KEY] = current.values
                 .sortedWith(targetOrdering)
-                .take(MAX_TARGETS)
                 .encodeTargets()
         }
     }
@@ -79,6 +82,9 @@ class AutoProcessOnShareSettings(
 
 private val targetOrdering = compareByDescending<SharingTarget> { it.count }
     .thenByDescending { it.lastUsedAt }
+
+private val targetEvictionOrdering = compareBy<SharingTarget> { it.lastUsedAt }
+    .thenBy { it.count }
 
 private fun String.decodeTargets(): List<SharingTarget> = runCatching {
     if (isBlank()) return@runCatching emptyList()
