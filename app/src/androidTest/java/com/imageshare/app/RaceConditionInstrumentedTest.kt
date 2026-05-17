@@ -12,6 +12,8 @@ import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.processing.PresetPipelineRunner
 import com.imageshare.app.saving.PersistentSaver
+import com.imageshare.app.sharing.AutoProcessOnShareSettings
+import com.imageshare.app.sharing.DataStoreSharingTargetsRepository
 import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.core.io.OutputStore
 import com.imageshare.core.io.PersistableUriRegistry
@@ -98,6 +100,7 @@ class RaceConditionInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.onProcessAndShare() }
         withTimeout(5_000L) { runner.firstStarted.await() }
         viewModel.stageSharedUris("job-2", listOf(replacement.uri), StaticSharedIntakeRepository(listOf(replacement)))
+        waitUntilSources(viewModel, listOf(replacement.uri))
 
         gate.complete(Unit)
         waitUntilDone(viewModel)
@@ -107,6 +110,12 @@ class RaceConditionInstrumentedTest {
         assertEquals(1, successes.size)
         assertEquals(source.uri, successes.single().before.uri)
         assertEquals(listOf(replacement.uri), viewModel.sources.value.map { it.uri })
+    }
+
+    private suspend fun waitUntilSources(viewModel: MainViewModel, expectedUris: List<Uri>) {
+        withTimeout(5_000L) {
+            while (viewModel.sources.value.map { it.uri } != expectedUris) delay(10L)
+        }
     }
 
     private suspend fun waitUntilDone(viewModel: MainViewModel) {
@@ -122,6 +131,10 @@ class RaceConditionInstrumentedTest {
             scope = CoroutineScope(Job() + Dispatchers.IO),
             produceFile = { registryFile },
         )
+        val sharingDataStore = PreferenceDataStoreFactory.create(
+            scope = CoroutineScope(Job() + Dispatchers.IO),
+            produceFile = { File(context.cacheDir, "race-sharing-${System.nanoTime()}.preferences_pb") },
+        )
         return MainViewModel(
             appContext = context,
             presetRepository = RacePresetRepository(),
@@ -132,6 +145,8 @@ class RaceConditionInstrumentedTest {
             persistableUriRegistry = PersistableUriRegistry(dataStore, context.contentResolver),
             batchManifestDao = database.batchManifestDao(),
             batchWorkScheduler = RaceBatchWorkScheduler(),
+            sharingTargetsRepository = DataStoreSharingTargetsRepository(sharingDataStore),
+            autoProcessOnShareSettings = AutoProcessOnShareSettings(sharingDataStore),
         )
     }
 

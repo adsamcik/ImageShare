@@ -1,3 +1,5 @@
+@file:Suppress("ReturnCount")
+
 package com.imageshare.core.io
 
 import android.content.ContentResolver

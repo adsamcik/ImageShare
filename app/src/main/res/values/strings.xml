@@ -119,12 +119,25 @@
     <string name="metadata_preserve_safe">Preserve safe</string>
     <string name="metadata_preserve_all">Preserve all</string>
     <string name="share_failed_no_target">No app available to share to.</string>
+    <string name="smart_share_title">Share with</string>
+    <string name="smart_share_recently_used">Recently used</string>
+    <string name="smart_share_all_apps">All apps</string>
+    <string name="smart_share_more">More…</string>
+    <string name="smart_share_more_options_a11y">More share options</string>
+    <string name="smart_share_target_a11y">Share to %1$s</string>
+    <string name="smart_share_target_previous_a11y">Share to %1$s, %2$d previous shares</string>
+    <plurals name="smart_share_share_count">
+        <item quantity="one">%1$d share</item>
+        <item quantity="other">%1$d shares</item>
+    </plurals>
     <string name="save_status_cancelled">Save cancelled.</string>
     <string name="save_status_single_done">Saved 1 image (%s).</string>
     <string name="save_status_failed">Save failed.</string>
     <string name="advanced_section_title">Advanced</string>
     <string name="run_in_background">Run in background</string>
     <string name="run_in_background_description">Use a foreground notification so larger batches keep running if you leave the app.</string>
+    <string name="auto_process_on_share">Auto-process when shared</string>
+    <string name="auto_process_on_share_description">Skip the source review screen — process immediately with the current preset and go straight to share.</string>
     <string name="batch_channel_name">Batch processing</string>
     <string name="batch_channel_description">Progress for image processing batches.</string>
     <string name="batch_notification_title">ImageShare · Processing images</string>

@@ -1,3 +1,5 @@
+@file:Suppress("ReturnCount")
+
 package com.imageshare.benchmark.macro
 
 import android.content.Context

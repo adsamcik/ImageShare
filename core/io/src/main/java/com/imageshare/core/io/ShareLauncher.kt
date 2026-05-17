@@ -1,6 +1,7 @@
 package com.imageshare.core.io
 
 import android.content.Context
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
@@ -36,6 +37,7 @@ class ShareLauncher(
         return Intent(Intent.ACTION_SEND).apply {
             type = item.mimeType
             putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newUri(context.contentResolver, item.filename, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
@@ -50,6 +52,9 @@ class ShareLauncher(
         return Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = commonMime
             putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            clipData = ClipData.newUri(context.contentResolver, items.first().filename, uris.first()).apply {
+                uris.drop(1).forEach { uri -> addItem(ClipData.Item(uri)) }
+            }
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }

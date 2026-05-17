@@ -27,6 +27,7 @@ class ShareLauncherTest {
         assertEquals("image/jpeg", intent.type)
         assertTrue(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         assertTrue(uri.toString().startsWith("content://${context.packageName}.shareprovider/"))
+        assertEquals(uri, intent.clipData?.getItemAt(0)?.uri)
     }
 
     @Test
@@ -42,6 +43,7 @@ class ShareLauncherTest {
         assertEquals(Intent.ACTION_SEND_MULTIPLE, intent.action)
         assertEquals("image/jpeg", intent.type)
         assertTrue(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+        assertEquals(2, intent.clipData?.itemCount)
     }
 
     @Test

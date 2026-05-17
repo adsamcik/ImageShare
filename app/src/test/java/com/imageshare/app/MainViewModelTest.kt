@@ -13,6 +13,9 @@ import android.provider.OpenableColumns
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.emptyPreferences
 import com.imageshare.app.data.BatchManifestDao
 import com.imageshare.app.data.ImageShareDatabase
 import com.imageshare.app.processing.BatchOrchestrator
@@ -25,6 +28,8 @@ import com.imageshare.core.io.PersistableUriRegistry
 import com.imageshare.core.io.ShareLauncher
 import com.imageshare.core.io.ShareUriResolver
 import com.imageshare.core.io.SourceItem
+import com.imageshare.app.sharing.AutoProcessOnShareSettings
+import com.imageshare.app.sharing.DataStoreSharingTargetsRepository
 import com.imageshare.core.processing.EncodeError
 import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.feature.preset.AlphaFallback
@@ -364,14 +369,56 @@ class MainViewModelTest {
 
         viewModel.onPostNotificationsPermissionResult(granted = false)
         assertEnqueuedEventually(scheduler)
+        var completionAttempts = 0
+        while (viewModel.processingState.value !is ProcessingState.Done && completionAttempts < 20) {
+            advanceUntilIdle()
+            completionAttempts += 1
+        }
 
         viewModel.onProcessAndShareRequestingNotificationsIfNeeded(
             postNotificationsGranted = false,
             requestPostNotifications = { permissionRequests += 1 },
         )
-        assertEnqueuedEventually(scheduler, expectedCount = 2)
+        assertEnqueuedEventually(scheduler)
         assertEquals(1, permissionRequests)
         assertEquals(true, viewModel.postNotificationsPermissionAskedThisSession)
+    }
+
+    @Test
+    fun autoProcessOnShareStartsProcessingAfterStagingSharedUris() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val events = mutableListOf<Intent>()
+        val viewModel = viewModel(context) { before, preset, _ -> success(context, preset, before) }
+        val eventJob = launch { viewModel.shareEvents.collect { events.add(it) } }
+        viewModel.onAutoProcessOnShareChanged(true)
+        advanceUntilIdle()
+
+        stage(viewModel, source)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.processingState.value is ProcessingState.Done)
+        assertEquals(Intent.ACTION_SEND, events.single().action)
+        eventJob.cancel()
+    }
+
+    @Test
+    fun autoProcessOnShareUsesPersistedEnabledBeforeInitialLoadCompletes() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val events = mutableListOf<Intent>()
+        val sharingDataStore = FakePreferencesDataStore()
+        AutoProcessOnShareSettings(sharingDataStore).setEnabled(true)
+        val viewModel = viewModel(
+            context = context,
+            sharingDataStore = sharingDataStore,
+        ) { before, preset, _ -> success(context, preset, before) }
+        val eventJob = launch { viewModel.shareEvents.collect { events.add(it) } }
+
+        stage(viewModel, source)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.processingState.value is ProcessingState.Done)
+        assertEquals(Intent.ACTION_SEND, events.single().action)
+        eventJob.cancel()
     }
 
     private suspend fun assertEnqueuedEventually(scheduler: FakeBatchWorkScheduler, expectedCount: Int = 1) {
@@ -386,18 +433,23 @@ class MainViewModelTest {
     private fun viewModel(
         context: android.content.Context,
         scheduler: BatchWorkScheduler = FakeBatchWorkScheduler(),
+        sharingDataStore: DataStore<Preferences> = FakePreferencesDataStore(),
         result: suspend (SourceItem, Preset, String) -> PresetPipeline.Result,
-    ): MainViewModel = MainViewModel(
-        appContext = context,
-        presetRepository = FakePresetRepository(),
-        shareLauncher = ShareLauncher(ShareUriResolver { _, file -> Uri.parse("content://share/${file.name}") }),
-        saver = PersistentSaver(MediaStoreSaver(context.contentResolver), context.contentResolver),
-        sharedIntakeRepositoryFactory = { _, _ -> FakeSharedIntakeRepository(listOf(source)) },
-        batchOrchestrator = BatchOrchestrator(FakePipelineRunner(result), mainDispatcherRule.dispatcher),
-        persistableUriRegistry = persistableUriRegistry(context),
-        batchManifestDao = batchManifestDao(),
-        batchWorkScheduler = scheduler,
-    )
+    ): MainViewModel {
+        return MainViewModel(
+            appContext = context,
+            presetRepository = FakePresetRepository(),
+            shareLauncher = ShareLauncher(ShareUriResolver { _, file -> Uri.parse("content://share/${file.name}") }),
+            saver = PersistentSaver(MediaStoreSaver(context.contentResolver), context.contentResolver),
+            sharedIntakeRepositoryFactory = { _, _ -> FakeSharedIntakeRepository(listOf(source)) },
+            batchOrchestrator = BatchOrchestrator(FakePipelineRunner(result), mainDispatcherRule.dispatcher),
+            persistableUriRegistry = persistableUriRegistry(context),
+            batchManifestDao = batchManifestDao(),
+            batchWorkScheduler = scheduler,
+            sharingTargetsRepository = DataStoreSharingTargetsRepository(sharingDataStore),
+            autoProcessOnShareSettings = AutoProcessOnShareSettings(sharingDataStore),
+        )
+    }
 
     private fun batchManifestDao(): BatchManifestDao = Room.inMemoryDatabaseBuilder(
         ApplicationProvider.getApplicationContext(),
@@ -405,13 +457,14 @@ class MainViewModelTest {
     ).allowMainThreadQueries().build().batchManifestDao()
 
     private fun persistableUriRegistry(context: android.content.Context): PersistableUriRegistry {
-        val file = File(context.cacheDir, "main-view-model-${System.nanoTime()}.preferences_pb")
-        val dataStore = PreferenceDataStoreFactory.create(
-            scope = kotlinx.coroutines.CoroutineScope(Job() + Dispatchers.IO),
-            produceFile = { file },
-        )
-        return PersistableUriRegistry(dataStore, context.contentResolver)
+        return PersistableUriRegistry(testDataStore(context, "main-view-model"), context.contentResolver)
     }
+
+    private fun testDataStore(context: android.content.Context, prefix: String) =
+        PreferenceDataStoreFactory.create(
+            scope = kotlinx.coroutines.CoroutineScope(Job() + Dispatchers.IO),
+            produceFile = { File(context.cacheDir, "$prefix-${System.nanoTime()}.preferences_pb") },
+        )
 
     private suspend fun stage(viewModel: MainViewModel, vararg sourceItems: SourceItem) {
         viewModel.stageSharedUris("job", sourceItems.map { it.uri }, FakeSharedIntakeRepository(sourceItems.toList()))
@@ -488,6 +541,20 @@ private class FakeBatchWorkScheduler : BatchWorkScheduler {
         flowOf(BatchWorkStatus(BatchWorkState.Succeeded))
 
     override fun cancel(jobId: String) = Unit
+}
+
+private class FakePreferencesDataStore(
+    initialPreferences: Preferences = emptyPreferences(),
+) : DataStore<Preferences> {
+    private val state = MutableStateFlow(initialPreferences)
+
+    override val data: Flow<Preferences> = state
+
+    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
+        val updated = transform(state.value)
+        state.value = updated
+        return updated
+    }
 }
 
 private class RecentContentProvider(

@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength")
+
 package com.imageshare.core.io
 
 import android.content.ContentProvider

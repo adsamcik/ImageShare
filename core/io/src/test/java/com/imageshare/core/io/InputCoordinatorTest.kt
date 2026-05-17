@@ -1,3 +1,5 @@
+@file:Suppress("LongParameterList")
+
 package com.imageshare.core.io
 
 import android.content.ContentProvider

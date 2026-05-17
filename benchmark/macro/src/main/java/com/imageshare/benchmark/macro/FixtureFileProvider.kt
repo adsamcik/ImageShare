@@ -1,3 +1,5 @@
+@file:Suppress("ThrowsCount")
+
 package com.imageshare.benchmark.macro
 
 import android.content.ContentProvider

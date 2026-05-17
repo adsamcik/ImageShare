@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions", "ReturnCount")
+@file:Suppress("TooManyFunctions", "ReturnCount", "TooGenericExceptionCaught", "InstanceOfCheckForException")
 
 package com.imageshare.app.work
 

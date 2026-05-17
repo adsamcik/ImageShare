@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package com.imageshare.benchmark.macro
 
 import android.content.Context

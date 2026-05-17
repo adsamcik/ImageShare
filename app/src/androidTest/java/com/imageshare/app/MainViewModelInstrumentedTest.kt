@@ -12,6 +12,8 @@ import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.processing.PresetPipelineRunner
 import com.imageshare.app.saving.PersistentSaver
+import com.imageshare.app.sharing.AutoProcessOnShareSettings
+import com.imageshare.app.sharing.DataStoreSharingTargetsRepository
 import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.core.io.OutputStore
 import com.imageshare.core.io.PersistableUriRegistry
@@ -82,29 +84,35 @@ class MainViewModelInstrumentedTest {
         assertEquals("image/jpeg", intent.type)
     }
 
-    private fun viewModel(): MainViewModel = MainViewModel(
-        appContext = context,
-        presetRepository = FakePresetRepository(),
-        shareLauncher = ShareLauncher(ShareUriResolver { _, file -> Uri.parse("content://share/${file.name}") }),
-        saver = PersistentSaver(MediaStoreSaver(context.contentResolver), context.contentResolver),
-        sharedIntakeRepositoryFactory = { _, _ -> FakeSharedIntakeRepository(listOf(source)) },
-        batchOrchestrator = BatchOrchestrator(FakePipelineRunner(context, source)),
-        persistableUriRegistry = persistableUriRegistry(),
-        batchManifestDao = Room.inMemoryDatabaseBuilder(context, ImageShareDatabase::class.java)
-            .allowMainThreadQueries()
-            .build()
-            .batchManifestDao(),
-        batchWorkScheduler = FakeBatchWorkScheduler(),
-    )
+    private fun viewModel(): MainViewModel {
+        val sharingDataStore = testDataStore("main-view-model-instrumented-sharing")
+        return MainViewModel(
+            appContext = context,
+            presetRepository = FakePresetRepository(),
+            shareLauncher = ShareLauncher(ShareUriResolver { _, file -> Uri.parse("content://share/${file.name}") }),
+            saver = PersistentSaver(MediaStoreSaver(context.contentResolver), context.contentResolver),
+            sharedIntakeRepositoryFactory = { _, _ -> FakeSharedIntakeRepository(listOf(source)) },
+            batchOrchestrator = BatchOrchestrator(FakePipelineRunner(context, source)),
+            persistableUriRegistry = persistableUriRegistry(),
+            batchManifestDao = Room.inMemoryDatabaseBuilder(context, ImageShareDatabase::class.java)
+                .allowMainThreadQueries()
+                .build()
+                .batchManifestDao(),
+            batchWorkScheduler = FakeBatchWorkScheduler(),
+            sharingTargetsRepository = DataStoreSharingTargetsRepository(sharingDataStore),
+            autoProcessOnShareSettings = AutoProcessOnShareSettings(sharingDataStore),
+        )
+    }
 
     private fun persistableUriRegistry(): PersistableUriRegistry {
-        val file = File(context.cacheDir, "main-view-model-instrumented-${System.nanoTime()}.preferences_pb")
-        val dataStore = PreferenceDataStoreFactory.create(
-            scope = CoroutineScope(Job() + Dispatchers.IO),
-            produceFile = { file },
-        )
-        return PersistableUriRegistry(dataStore, context.contentResolver)
+        return PersistableUriRegistry(testDataStore("main-view-model-instrumented"), context.contentResolver)
     }
+
+    private fun testDataStore(prefix: String) =
+        PreferenceDataStoreFactory.create(
+            scope = CoroutineScope(Job() + Dispatchers.IO),
+            produceFile = { File(context.cacheDir, "$prefix-${System.nanoTime()}.preferences_pb") },
+        )
 }
 
 private class FakePipelineRunner(

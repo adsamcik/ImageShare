@@ -1,4 +1,4 @@
-@file:Suppress("MagicNumber", "LongMethod")
+@file:Suppress("MagicNumber", "LongMethod", "MaxLineLength")
 
 package com.imageshare.app.ui
 

@@ -1,7 +1,15 @@
-@file:Suppress("LongParameterList", "ReturnCount", "MaxLineLength", "TooManyFunctions")
+@file:Suppress(
+    "LongParameterList",
+    "ReturnCount",
+    "MaxLineLength",
+    "TooManyFunctions",
+    "ComplexCondition",
+    "MagicNumber",
+)
 
 package com.imageshare.app
 
+import android.content.ComponentName
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -22,6 +30,9 @@ import com.imageshare.app.data.BatchManifestDao
 import com.imageshare.app.data.BatchManifestEntity
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.saving.PersistentSaver
+import com.imageshare.app.sharing.AutoProcessOnShareSettings
+import com.imageshare.app.sharing.SharingTarget
+import com.imageshare.app.sharing.SharingTargetsRepository
 import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.core.io.InputCoordinator
@@ -54,6 +65,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.launch
@@ -72,6 +84,8 @@ class MainViewModel(
     private val persistableUriRegistry: PersistableUriRegistry = AppContainer.persistableUriRegistry,
     private val batchManifestDao: BatchManifestDao = AppContainer.batchManifestDao,
     private val batchWorkScheduler: BatchWorkScheduler = WorkManagerBatchWorkScheduler(appContext),
+    private val sharingTargetsRepository: SharingTargetsRepository = AppContainer.sharingTargetsRepository,
+    private val autoProcessOnShareSettings: AutoProcessOnShareSettings = AppContainer.autoProcessOnShareSettings,
 ) : ViewModel() {
     private val sharedSources = MutableStateFlow<List<SourceItem>>(emptyList())
     private val pickedSources = MutableStateFlow<List<SourceItem>>(emptyList())
@@ -83,10 +97,12 @@ class MainViewModel(
     private val _shownComparison = MutableStateFlow<ComparisonState?>(null)
     private val _customOverride = MutableStateFlow<CustomOverride?>(null)
     private val _runInBackground = MutableStateFlow(false)
+    private val _autoProcessOnShare = MutableStateFlow(false)
     private var currentBatchJob: Job? = null
     private var activeBatch: ActiveBatch? = null
     private var activeWorkJobId: String? = null
     private var hasAskedPostNotificationsPermission = false
+    private var autoProcessChangedThisSession = false
 
     val presets: StateFlow<List<Preset>> = presetRepository.observePresets()
         .stateIn(viewModelScope, SharingStarted.Eagerly, DefaultPresets.ALL)
@@ -100,6 +116,9 @@ class MainViewModel(
 
     val customOverride: StateFlow<CustomOverride?> = _customOverride.asStateFlow()
     val runInBackground: StateFlow<Boolean> = _runInBackground.asStateFlow()
+    val topSharingTargets: StateFlow<List<SharingTarget>> = sharingTargetsRepository.observeTopTargets()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val autoProcessOnShare: StateFlow<Boolean> = _autoProcessOnShare.asStateFlow()
 
     val effectivePreset: StateFlow<Preset?> = combine(selectedPreset, customOverride) { base, override ->
         if (base == null) {
@@ -128,6 +147,12 @@ class MainViewModel(
 
     init {
         reattachToBackgroundBatch()
+        viewModelScope.launch {
+            val persisted = autoProcessOnShareSettings.isEnabled()
+            if (!autoProcessChangedThisSession) {
+                _autoProcessOnShare.value = persisted
+            }
+        }
     }
 
     fun onPresetSelected(presetId: String) {
@@ -142,6 +167,20 @@ class MainViewModel(
 
     fun onRunInBackgroundChanged(enabled: Boolean) {
         _runInBackground.value = enabled
+    }
+
+    fun onAutoProcessOnShareChanged(enabled: Boolean) {
+        autoProcessChangedThisSession = true
+        _autoProcessOnShare.value = enabled
+        viewModelScope.launch {
+            autoProcessOnShareSettings.setEnabled(enabled)
+        }
+    }
+
+    fun recordSharingTarget(componentName: ComponentName) {
+        viewModelScope.launch {
+            sharingTargetsRepository.recordSelection(componentName)
+        }
     }
 
     fun onPickFromGallery() = Unit
@@ -181,14 +220,17 @@ class MainViewModel(
     }
 
     fun onProcessAndShare() {
-        val currentSources = sources.value
+        startProcessingFor(sources.value)
+    }
+
+    private fun startProcessingFor(currentSources: List<SourceItem>, presetOverride: Preset? = null) {
         if (
             currentSources.isEmpty() ||
             mutableProcessingState.value is ProcessingState.Running ||
-            currentBatchJob != null ||
-            activeWorkJobId != null
+            activeWorkJobId != null ||
+            (currentBatchJob != null && mutableProcessingState.value !is ProcessingState.Done)
         ) return
-        val preset = effectivePreset.value ?: return
+        val preset = presetOverride ?: effectivePreset.value ?: return
         val jobId = newJobId()
         if (shouldRunWithWorkManager(currentSources.size, _runInBackground.value)) {
             startWorkManagerBatch(jobId, currentSources, preset)
@@ -329,6 +371,15 @@ class MainViewModel(
         sharedSources.value = staged
         repository.sweep()
         mutableProcessingState.value = ProcessingState.Idle
+        val shouldAutoProcess = if (autoProcessChangedThisSession) {
+            _autoProcessOnShare.value
+        } else {
+            autoProcessOnShareSettings.isEnabled().also { _autoProcessOnShare.value = it }
+        }
+        if (shouldAutoProcess && staged.isNotEmpty()) {
+            val preset = effectivePreset.value ?: effectivePreset.first { it != null }
+            startProcessingFor(staged + pickedSources.value, preset)
+        }
     }
 
     private suspend fun addPickedSources(uris: List<Uri>) {
@@ -370,9 +421,15 @@ class MainViewModel(
         activeBatch = ActiveBatch(jobId, pendingSources, preset)
         activeWorkJobId = jobId
         currentBatchJob = viewModelScope.launch {
-            seedManifest(jobId, pendingSources, currentProgress)
-            batchWorkScheduler.enqueue(jobId, preset.id, customOverride.value?.toWorkerJson())
-                .collect { status -> updateFromWorkStatus(jobId, status) }
+            try {
+                seedManifest(jobId, pendingSources, currentProgress)
+                batchWorkScheduler.enqueue(jobId, preset.id, customOverride.value?.toWorkerJson())
+                    .collect { status -> updateFromWorkStatus(jobId, status) }
+            } finally {
+                if (currentBatchJob === coroutineContext[Job]) {
+                    currentBatchJob = null
+                }
+            }
         }
     }
 

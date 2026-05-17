@@ -1,5 +1,6 @@
 package com.imageshare.app
 
+import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -7,6 +8,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.imageshare.app.ui.ImageShareTheme
@@ -23,7 +25,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             ImageShareTheme {
-                MainScreen(viewModel)
+                MainScreen(
+                    viewModel = viewModel,
+                    launchTargetInterceptor = { componentName ->
+                        smartShareLaunchInterceptor?.invoke(componentName) == true
+                    },
+                )
             }
         }
         sweepCachesOnStart()
@@ -64,6 +71,12 @@ class MainActivity : ComponentActivity() {
                 AppContainer.batchManifestDao.purgeOlderThan(System.currentTimeMillis() - MANIFEST_SWEEP_AGE_MS)
             }.onFailure { Log.w(TAG, "Failed to sweep shared caches", it) }
         }
+    }
+
+    companion object {
+        @VisibleForTesting
+        @Volatile
+        var smartShareLaunchInterceptor: ((ComponentName) -> Boolean)? = null
     }
 }
 

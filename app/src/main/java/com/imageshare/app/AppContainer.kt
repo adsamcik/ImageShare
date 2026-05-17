@@ -9,6 +9,9 @@ import com.imageshare.app.data.ImageShareDatabase
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.saving.PersistentSaver
+import com.imageshare.app.sharing.AutoProcessOnShareSettings
+import com.imageshare.app.sharing.DataStoreSharingTargetsRepository
+import com.imageshare.app.sharing.SharingTargetsRepository
 import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.core.io.OutputStore
 import com.imageshare.core.io.PersistableUriRegistry
@@ -66,6 +69,14 @@ object AppContainer {
         )
     }
 
+    val sharingTargetsRepository: SharingTargetsRepository by lazy {
+        DataStoreSharingTargetsRepository(settingsDataStore(appContext))
+    }
+
+    val autoProcessOnShareSettings: AutoProcessOnShareSettings by lazy {
+        AutoProcessOnShareSettings(settingsDataStore(appContext))
+    }
+
     fun overrideForTests(
         batchManifestDao: BatchManifestDao? = null,
         batchOrchestrator: BatchOrchestrator? = null,
@@ -84,3 +95,9 @@ private val Context.uriRegistryDataStore: DataStore<Preferences> by preferencesD
 )
 
 private fun uriRegistryDataStore(context: Context): DataStore<Preferences> = context.uriRegistryDataStore
+
+private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "imageshare_settings",
+)
+
+private fun settingsDataStore(context: Context): DataStore<Preferences> = context.settingsDataStore

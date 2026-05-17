@@ -59,7 +59,7 @@ class MainActivityShareIntentTest {
             assertTrue("unrelated app cache directory must not be swept", siblingCacheDir.exists())
 
             composeRule.onNodeWithText("Process & share").performClick()
-            assertChooserLaunched(instrumentation, monitor, "chooser intent should be launched")
+            tapMoreAndAssertChooser(instrumentation, monitor, "chooser intent should be launched")
         }
         instrumentation.removeMonitor(monitor)
     }
@@ -77,7 +77,7 @@ class MainActivityShareIntentTest {
             composeRule.onNodeWithText("Social upload").performClick()
             composeRule.onNodeWithText("Process & share").performClick()
 
-            assertChooserLaunched(instrumentation, monitor, "chooser intent should be launched for WebP preset")
+            tapMoreAndAssertChooser(instrumentation, monitor, "chooser intent should be launched for WebP preset")
         }
         instrumentation.removeMonitor(monitor)
     }
@@ -98,7 +98,7 @@ class MainActivityShareIntentTest {
             }
             composeRule.onNodeWithText("Switch to PNG for those").performClick()
 
-            assertChooserLaunched(
+            tapMoreAndAssertChooser(
                 instrumentation,
                 monitor,
                 "chooser intent should be launched after PNG conflict resolution",
@@ -126,7 +126,7 @@ class MainActivityShareIntentTest {
                 }
                 composeRule.onNodeWithText("Use white background").performClick()
                 val output = waitForSharedOutputFile(appCacheDir, ".jpg")
-                assertChooserLaunched(instrumentation, monitor, "chooser intent should be launched after white fallback")
+                tapMoreAndAssertChooser(instrumentation, monitor, "chooser intent should be launched after white fallback")
                 assertFlatWhiteJpeg(output)
             }
         } finally {
@@ -236,6 +236,18 @@ class MainActivityShareIntentTest {
     ) {
         instrumentation.waitForMonitorWithTimeout(monitor, 30_000L)
         assertTrue(message, monitor.hits > 0)
+    }
+
+    private fun tapMoreAndAssertChooser(
+        instrumentation: android.app.Instrumentation,
+        monitor: ActivityMonitor,
+        message: String,
+    ) {
+        composeRule.waitUntil(timeoutMillis = 30_000L) {
+            composeRule.onAllNodesWithText("Share with").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("More…").performClick()
+        assertChooserLaunched(instrumentation, monitor, message)
     }
 
     private fun waitForSharedOutputFile(appCacheDir: File, extension: String): File {

@@ -14,8 +14,12 @@ package com.imageshare.app.ui
 import android.content.ActivityNotFoundException
 import android.Manifest
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -83,6 +87,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.platform.LocalContext
@@ -117,10 +122,15 @@ import com.imageshare.feature.preset.MetadataPolicy
 import com.imageshare.feature.preset.OutputFormat
 import com.imageshare.feature.preset.Preset
 import com.imageshare.feature.preset.ResizeMode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
-fun MainScreen(viewModel: MainViewModel) {
+fun MainScreen(
+    viewModel: MainViewModel,
+    launchTargetInterceptor: ((ComponentName) -> Boolean)? = null,
+) {
     val context = LocalContext.current
     val sources by viewModel.sources.collectAsState()
     val presets by viewModel.presets.collectAsState()
@@ -129,10 +139,16 @@ fun MainScreen(viewModel: MainViewModel) {
     val effectivePreset by viewModel.effectivePreset.collectAsState()
     val customOverride by viewModel.customOverride.collectAsState()
     val runInBackground by viewModel.runInBackground.collectAsState()
+    val autoProcessOnShare by viewModel.autoProcessOnShare.collectAsState()
+    val topSharingTargets by viewModel.topSharingTargets.collectAsState()
     val recentsUris by viewModel.recentsUris.collectAsState()
     val shownComparison by viewModel.shownComparison.collectAsState()
     var showLicenses by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    var smartChooserVisible by remember { mutableStateOf(false) }
+    var pendingShareIntent by remember { mutableStateOf<Intent?>(null) }
+    var shareTargets by remember { mutableStateOf(emptyList<ResolveInfoEntry>()) }
     val picker = rememberPhotoPickerLauncher(
         onResult = viewModel::onPickerResult,
         maxItems = Int.MAX_VALUE,
@@ -153,16 +169,31 @@ fun MainScreen(viewModel: MainViewModel) {
         viewModel.onPostNotificationsPermissionResult(granted)
     }
 
+    fun clearPendingShare() {
+        smartChooserVisible = false
+        pendingShareIntent = null
+    }
+
+    fun showNoShareTargetSnackbar() {
+        coroutineScope.launch {
+            snackbarHostState.showSnackbar(context.getString(R.string.share_failed_no_target))
+        }
+    }
+
     LaunchedEffect(viewModel) {
         viewModel.shareEvents.collect { shareIntent ->
-            runCatching {
-                context.startActivity(Intent.createChooser(shareIntent, null))
-            }.onFailure { error ->
-                if (error is ActivityNotFoundException) {
-                    snackbarHostState.showSnackbar(context.getString(R.string.share_failed_no_target))
-                } else {
-                    throw error
+            pendingShareIntent = shareIntent
+            val targets = withContext(Dispatchers.IO) { context.queryShareTargets(shareIntent) }
+            shareTargets = targets
+            if (targets.isEmpty()) {
+                runCatching {
+                    context.startActivity(Intent.createChooser(shareIntent, null))
+                }.onFailure { error ->
+                    error.handleShareLaunchFailure(::showNoShareTargetSnackbar)
                 }
+                pendingShareIntent = null
+            } else {
+                smartChooserVisible = true
             }
         }
     }
@@ -221,6 +252,8 @@ fun MainScreen(viewModel: MainViewModel) {
             onCustomOverride = viewModel::onCustomOverride,
             runInBackground = runInBackground,
             onRunInBackgroundChanged = viewModel::onRunInBackgroundChanged,
+            autoProcessOnShare = autoProcessOnShare,
+            onAutoProcessOnShareChanged = viewModel::onAutoProcessOnShareChanged,
             processingState = processingState,
             shownComparison = shownComparison,
             onPresetSelected = viewModel::onPresetSelected,
@@ -253,11 +286,80 @@ fun MainScreen(viewModel: MainViewModel) {
             snackbarHostState = snackbarHostState,
         )
     }
+
+    if (smartChooserVisible && pendingShareIntent != null) {
+        SmartShareChooser(
+            topTargets = topSharingTargets,
+            allTargets = shareTargets,
+            onTargetSelected = { componentName ->
+                val shareIntent = pendingShareIntent ?: return@SmartShareChooser
+                runCatching {
+                    val consumedByTest = launchTargetInterceptor?.invoke(componentName) == true
+                    if (!consumedByTest) {
+                        context.startActivity(Intent(shareIntent).setComponent(componentName))
+                    }
+                    viewModel.recordSharingTarget(componentName)
+                    clearPendingShare()
+                }.onFailure { error ->
+                    clearPendingShare()
+                    error.handleShareLaunchFailure(::showNoShareTargetSnackbar)
+                }
+            },
+            onMoreClicked = {
+                val shareIntent = pendingShareIntent ?: return@SmartShareChooser
+                runCatching {
+                    context.startActivity(Intent.createChooser(shareIntent, null))
+                    clearPendingShare()
+                }.onFailure { error ->
+                    clearPendingShare()
+                    error.handleShareLaunchFailure(::showNoShareTargetSnackbar)
+                }
+            },
+            onDismiss = ::clearPendingShare,
+        )
+    }
+}
+
+private fun Throwable.handleShareLaunchFailure(onActivityNotFound: () -> Unit) {
+    if (this is ActivityNotFoundException) {
+        onActivityNotFound()
+    } else {
+        throw this
+    }
 }
 
 private fun android.content.Context.hasPostNotificationsPermission(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+@Suppress("DEPRECATION")
+private fun android.content.Context.queryShareTargets(intent: Intent): List<ResolveInfoEntry> =
+    packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        .mapNotNull { resolveInfo ->
+            val activityInfo = resolveInfo.activityInfo ?: return@mapNotNull null
+            if (activityInfo.packageName == packageName) return@mapNotNull null
+            ResolveInfoEntry(
+                componentName = ComponentName(activityInfo.packageName, activityInfo.name),
+                displayName = resolveInfo.loadLabel(packageManager)?.toString()
+                    ?: activityInfo.loadLabel(packageManager)?.toString()
+                    ?: activityInfo.packageName,
+                iconBitmap = runCatching {
+                    resolveInfo.loadIcon(packageManager).toBitmap().asImageBitmap()
+                }.getOrNull(),
+            )
+        }
+        .distinctBy { it.componentName }
+
+private fun android.graphics.drawable.Drawable.toBitmap(): Bitmap {
+    if (this is BitmapDrawable && bitmap != null) return bitmap
+    val width = intrinsicWidth.takeIf { it > 0 } ?: 48
+    val height = intrinsicHeight.takeIf { it > 0 } ?: 48
+    return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+        val canvas = Canvas(bitmap)
+        setBounds(0, 0, canvas.width, canvas.height)
+        draw(canvas)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -270,6 +372,8 @@ fun PresetSheet(
     onCustomOverride: (MainViewModel.CustomOverride?) -> Unit = {},
     runInBackground: Boolean = false,
     onRunInBackgroundChanged: (Boolean) -> Unit = {},
+    autoProcessOnShare: Boolean = false,
+    onAutoProcessOnShareChanged: (Boolean) -> Unit = {},
     processingState: ProcessingState,
     shownComparison: ComparisonState? = null,
     onPresetSelected: (String) -> Unit,
@@ -386,7 +490,12 @@ fun PresetSheet(
                             modifier = Modifier.testTag("upscale-warning"),
                         )
                     }
-                    AdvancedSection(runInBackground, onRunInBackgroundChanged)
+                    AdvancedSection(
+                        runInBackground = runInBackground,
+                        onRunInBackgroundChanged = onRunInBackgroundChanged,
+                        autoProcessOnShare = autoProcessOnShare,
+                        onAutoProcessOnShareChanged = onAutoProcessOnShareChanged,
+                    )
                     StatusLine(processingState)
                     ResultSummary(
                         processingState = processingState,
@@ -437,6 +546,8 @@ fun PresetSheet(
 private fun AdvancedSection(
     runInBackground: Boolean,
     onRunInBackgroundChanged: (Boolean) -> Unit,
+    autoProcessOnShare: Boolean,
+    onAutoProcessOnShareChanged: (Boolean) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.advanced_section_title), style = MaterialTheme.typography.titleMedium)
@@ -461,6 +572,30 @@ private fun AdvancedSection(
                 )
             }
             Switch(checked = runInBackground, onCheckedChange = null)
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = autoProcessOnShare,
+                    role = Role.Switch,
+                    onValueChange = onAutoProcessOnShareChanged,
+                )
+                .semantics(mergeDescendants = true) {
+                    stateDescription = if (autoProcessOnShare) "On" else "Off"
+                }
+                .padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.auto_process_on_share), style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = stringResource(R.string.auto_process_on_share_description),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = autoProcessOnShare, onCheckedChange = null)
         }
     }
 }
