@@ -6,24 +6,32 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
-import com.imageshare.app.BuildConfig
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.core.content.FileProvider
+import androidx.exifinterface.media.ExifInterface
+import com.imageshare.app.BuildConfig
+import com.imageshare.core.processing.AvifAvailability
+import com.imageshare.core.processing.HeifAvailability
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.zip.CRC32
 import java.util.zip.DeflaterOutputStream
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -159,6 +167,140 @@ class TransformContentProviderTest {
         assertArrayEquals(first, second)
     }
 
+    @Test fun jpegProducesJpegMagic() {
+        val bytes = openBytes(transformUri(format = "jpeg"))
+        assertTrue(bytes.size >= 3)
+        assertEquals(0xFF, bytes[0].toInt() and 0xFF)
+        assertEquals(0xD8, bytes[1].toInt() and 0xFF)
+        assertEquals(0xFF, bytes[2].toInt() and 0xFF)
+    }
+
+    @Test fun webpProducesWebpMagic() {
+        val bytes = openBytes(transformUri(format = "webp"))
+        assertRiffWebp(bytes)
+    }
+
+    @Test fun heifProducesHeifMagic() {
+        assumeTrue("Device under test has no HEIF encoder", HeifAvailability.isWriteSupported())
+        val bytes = openBytes(transformUri(format = "heif"))
+        assertIsoBrand(bytes, setOf("heic", "heix", "hevc", "hevx", "mif1", "msf1"))
+    }
+
+    @Test fun avifProducesAvifMagic() {
+        assumeTrue("Device under test has no AVIF encoder", AvifAvailability.isAnyWriteSupported())
+        val bytes = openBytes(transformUri(format = "avif"))
+        assertIsoBrand(bytes, setOf("avif", "avis", "mif1", "msf1"))
+    }
+
+    @Test fun stripallActuallyStripsExif() {
+        val bytes = openBytes(transformUri(metadata = "stripall", source = exifJpegUri()))
+
+        withExif(bytes) { exif ->
+            assertNull(exif.getAttribute(ExifInterface.TAG_DATETIME))
+            assertNull(exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE))
+            assertEquals(ExifInterface.ORIENTATION_UNDEFINED, exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED))
+        }
+    }
+
+    @Test fun preservesafeRetainsSafeTagsAndDropsGps() {
+        val bytes = openBytes(transformUri(metadata = "preservesafe", source = exifJpegUri()))
+
+        withExif(bytes) { exif ->
+            assertEquals(EXIF_DATETIME, exif.getAttribute(ExifInterface.TAG_DATETIME))
+            assertNull(exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE))
+            assertEquals(ExifInterface.ORIENTATION_NORMAL, exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED))
+        }
+    }
+
+    @Test fun preserveallRetainsGps() {
+        val bytes = openBytes(transformUri(metadata = "preserveall", source = exifJpegUri()))
+
+        withExif(bytes) { exif ->
+            assertEquals(EXIF_DATETIME, exif.getAttribute(ExifInterface.TAG_DATETIME))
+            assertNotNull(exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE))
+            assertEquals(ExifInterface.ORIENTATION_NORMAL, exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED))
+        }
+    }
+
+    @Test fun longEdge2048ProducesLongEdge2048() {
+        val decoded = decode(openBytes(transformUri(resize = "longEdge2048", source = largeJpegUri())))
+        assertEquals(2048, maxOf(decoded.width, decoded.height))
+        decoded.recycle()
+    }
+
+    @Test fun longEdgeUpscaleSkipped() {
+        val decoded = decode(openBytes(transformUri(resize = "longEdge2048", source = sourceJpegUri())))
+        assertEquals(24, decoded.width)
+        assertEquals(16, decoded.height)
+        decoded.recycle()
+    }
+
+    @Test fun exactDimensionsHonored() {
+        val decoded = decode(openBytes(transformUri(resize = "exact13x7")))
+        assertEquals(13, decoded.width)
+        assertEquals(7, decoded.height)
+        decoded.recycle()
+    }
+
+    @Test fun percent50ProducesHalfSize() {
+        val decoded = decode(openBytes(transformUri(resize = "percent50")))
+        assertEquals(12, decoded.width)
+        assertEquals(8, decoded.height)
+        decoded.recycle()
+    }
+
+    @Test fun aspectLockTrueScalesToRequestedBox() {
+        val decoded = decode(openBytes(transformUri(resize = "exact10x20", aspectLock = true)))
+        assertEquals(10, decoded.width)
+        assertEquals(20, decoded.height)
+        decoded.recycle()
+    }
+
+    @Test fun aspectLockFalseStretchesFreely() {
+        val decoded = decode(openBytes(transformUri(resize = "exact10x20", aspectLock = false)))
+        assertEquals(10, decoded.width)
+        assertEquals(20, decoded.height)
+        decoded.recycle()
+    }
+
+    @Test fun corruptSourceProducesProcessingFailed() {
+        val error = assertFileNotFound(transformUri(source = corruptSourceUri()))
+        assertTrue(error.message.orEmpty().contains("PROCESSING_FAILED"))
+        assertFalse(error.message.orEmpty().contains("GRANT_LOST"))
+    }
+
+    @Test fun successfulQueryReturnsDisplayNameAndSize() {
+        resolver.query(transformUri(format = "png"), null, null, null, null).use { cursor ->
+            assertNotNull(cursor)
+            assertTrue(cursor!!.moveToFirst())
+            assertEquals("imageshare-transform.png", cursor.getString(0))
+            assertTrue(cursor.getLong(1) > 0L)
+        }
+    }
+
+    @Test fun getTypeReturnsWebpMimeType() {
+        assertEquals("image/webp", resolver.getType(transformUri(format = "webp")))
+    }
+
+    @Test fun concurrentTransformsOfSameUriReturnIdenticalBytes() {
+        val uri = transformUri(format = "png", resize = "longEdge12")
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val results = executor.invokeAll(List(2) { Callable { openBytes(uri) } }, 30, TimeUnit.SECONDS)
+                .map { it.get() }
+            assertArrayEquals(results[0], results[1])
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test fun openFileRejectsWriteMode() {
+        val error = assertThrows(FileNotFoundException::class.java) {
+            resolver.openFileDescriptor(transformUri(), "w")
+        }
+        assertTrue(error.message.orEmpty().contains("MALFORMED_URI"))
+    }
+
     private fun openBytes(uri: Uri): ByteArray = resolver.openInputStream(uri)?.use { it.readBytes() }
         ?: throw AssertionError("Expected transform stream for $uri")
 
@@ -177,6 +319,7 @@ class TransformContentProviderTest {
         metadata: String = "stripall",
         source: Uri = sourceJpegUri(),
         targetBytes: Long? = null,
+        aspectLock: Boolean? = null,
     ): Uri = Uri.Builder()
         .scheme("content")
         .authority("${context.packageName}.transform")
@@ -187,6 +330,7 @@ class TransformContentProviderTest {
         .appendPath(metadata)
         .appendQueryParameter("source", source.toString())
         .apply { targetBytes?.let { appendQueryParameter("targetBytes", it.toString()) } }
+        .apply { aspectLock?.let { appendQueryParameter("aspectLock", it.toString()) } }
         .build()
 
     private fun hugePngUri(): Uri {
@@ -200,19 +344,54 @@ class TransformContentProviderTest {
     private fun sourceJpegUri(): Uri {
         val file = File(sharedOutputDir(), "transform-source.jpg")
         if (!file.isFile) {
-            val bitmap = Bitmap.createBitmap(24, 16, Bitmap.Config.ARGB_8888)
-            try {
-                for (y in 0 until bitmap.height) {
-                    for (x in 0 until bitmap.width) {
-                        bitmap.setPixel(x, y, Color.rgb(64, x * 255 / bitmap.width, y * 255 / bitmap.height))
-                    }
-                }
-                FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-            } finally {
-                bitmap.recycle()
+            writeGradientJpeg(file, 24, 16)
+        }
+        return fileProviderUri(file)
+    }
+
+    private fun largeJpegUri(): Uri {
+        val file = File(sharedOutputDir(), "transform-large-3000x2000.jpg")
+        if (!file.isFile) {
+            writeGradientJpeg(file, 3000, 2000)
+        }
+        return fileProviderUri(file)
+    }
+
+    private fun exifJpegUri(): Uri {
+        val file = File(sharedOutputDir(), "transform-source-exif.jpg")
+        if (!file.isFile) {
+            writeGradientJpeg(file, 64, 48)
+            ExifInterface(file.absolutePath).apply {
+                setAttribute(ExifInterface.TAG_DATETIME, EXIF_DATETIME)
+                setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, EXIF_DATETIME)
+                setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_ROTATE_90.toString())
+                setLatLong(37.4219983, -122.084)
+                saveAttributes()
             }
         }
         return fileProviderUri(file)
+    }
+
+    private fun corruptSourceUri(): Uri {
+        val file = File(sharedOutputDir(), "transform-corrupt.bin")
+        if (!file.isFile) {
+            file.writeBytes(ByteArray(100) { 0xAA.toByte() })
+        }
+        return fileProviderUri(file)
+    }
+
+    private fun writeGradientJpeg(file: File, width: Int, height: Int) {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        try {
+            for (y in 0 until bitmap.height) {
+                for (x in 0 until bitmap.width) {
+                    bitmap.setPixel(x, y, Color.rgb(64, x * 255 / bitmap.width, y * 255 / bitmap.height))
+                }
+            }
+            FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     private fun sharedOutputDir(): File = File(context.cacheDir, "shared-output").apply { mkdirs() }
@@ -265,6 +444,32 @@ class TransformContentProviderTest {
         output.write(chunkBytes.toByteArray())
     }
 
+    private fun decode(bytes: ByteArray): Bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        ?: throw AssertionError("Expected decodable image")
+
+    private fun assertRiffWebp(bytes: ByteArray) {
+        assertTrue(bytes.size >= 12)
+        assertEquals("RIFF", bytes.copyOfRange(0, 4).toString(Charsets.US_ASCII))
+        assertEquals("WEBP", bytes.copyOfRange(8, 12).toString(Charsets.US_ASCII))
+    }
+
+    private fun assertIsoBrand(bytes: ByteArray, expectedBrands: Set<String>) {
+        assertTrue(bytes.size >= 16)
+        assertEquals("ftyp", bytes.copyOfRange(4, 8).toString(Charsets.US_ASCII))
+        val header = bytes.copyOfRange(8, minOf(bytes.size, 64)).toString(Charsets.ISO_8859_1)
+        assertTrue("Expected one of $expectedBrands in ISO BMFF header", expectedBrands.any { header.contains(it) })
+    }
+
+    private fun withExif(bytes: ByteArray, block: (ExifInterface) -> Unit) {
+        val file = File(sharedOutputDir(), "transformed-exif-${System.nanoTime()}.jpg")
+        try {
+            file.writeBytes(bytes)
+            block(ExifInterface(file.absolutePath))
+        } finally {
+            file.delete()
+        }
+    }
+
     private fun grantTestSourceRead(uri: Uri) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val packages = listOf(
@@ -282,5 +487,6 @@ class TransformContentProviderTest {
 
     private companion object {
         val PNG_MAGIC = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        const val EXIF_DATETIME = "2024:01:02 03:04:05"
     }
 }
