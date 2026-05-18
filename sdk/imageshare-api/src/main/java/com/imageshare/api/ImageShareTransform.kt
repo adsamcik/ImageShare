@@ -55,6 +55,7 @@ public object ImageShareTransform {
      * This catches [TransformException] only; permission failures such as [SecurityException]
      * propagate unchanged.
      */
+    @WorkerThread
     public fun transformResult(context: Context, request: TransformRequest): TransformResult = try {
         val bytes = transform(context, request)
         TransformResult.Success(

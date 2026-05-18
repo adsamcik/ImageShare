@@ -56,25 +56,36 @@ Risks include reading a source without a valid grant, leaking source identifiers
 
 ### Denial of service
 
-A host can spam cheap malformed URIs, send many valid requests, request expensive codecs, provide giant images, or create recursive transform chains. Controls: cheap parse-before-work validation, per-UID rate limit, per-UID and process-wide concurrency caps, pixel budget preflight, target byte and dimension ranges, bounded cache size, 24-hour expiry, and self-reference rejection. Long work should happen off Binder threads using an output pipe model. When capacity is exhausted, return `RATE_LIMIT`, `SYSTEM_BUSY`, or `PIXEL_BUDGET_EXCEEDED` instead of crashing.
+A host can spam cheap malformed URIs, send many valid requests, request expensive codecs, provide giant images, or create recursive transform chains. Controls: cheap parse-before-work validation, per-UID 100 requests/minute and 2 concurrent requests, 8 concurrent requests process-wide, pixel budget preflight, target byte and dimension ranges, 200 MB hard disk cache budget, 2000 cache entry hard count, 24-hour hard expiry, FIFO cache eviction by `createdAtMs`, and self-reference rejection. Long work should happen off Binder threads using an output pipe model. When capacity is exhausted, return `RATE_LIMIT`, `SYSTEM_BUSY`, or `PIXEL_BUDGET_EXCEEDED` instead of crashing.
 
 ### Elevation of privilege
 
 A host may try to use ImageShare as a confused deputy to read data it could not otherwise access, or to access future premium transforms without authorization. Controls: ImageShare opens exactly the URI supplied in `source`, only after the platform grant exists; it does not enumerate, walk, or follow arbitrary links. Future premium decisions must be based on caller UID and platform permission state, not on tokens in the transform URI. No app dependency, premium gating, or publishing configuration is added by these docs.
 
+## Abuse scenarios
+
+### D2 — Denial of service: rate flooding
+- AD1 calls API rapidly to exhaust ImageShare's resources.
+- **Control C2**: per-UID 100/min + 2 concurrent, process-wide 8 concurrent (`TransformRateLimiter`).
+- **Residual**: ImageShare's UI may degrade during sustained AD1 flood; rate limiter prevents OOM but not all latency impact.
+
+### D3 — Denial of service: cache fill
+- AD1 generates many distinct cache keys to evict legitimate entries.
+- **Control C5**: 200 MB hard budget + 2000 entry hard cap + 24h hard expiry + FIFO by `createdAtMs` (`TransformCache`).
+- **Residual**: AD1 can fill cache; legitimate entries get evicted earlier; tolerable because cache is best-effort.
+
 ## Controls inventory
 
-- URI authority fixed to `com.imageshare.app.transform` and versioned under `/v1/`.
-- Required `source` query parameter must decode to `content://`.
-- Transform provider self-reference is rejected in both app parser and SDK request validation.
-- Host must call `grantUriPermission("com.imageshare.app", source, FLAG_GRANT_READ_URI_PERMISSION)`.
-- Errors use stable public codes: `MALFORMED_URI`, `MISSING_SOURCE`, `GRANT_LOST`, `UNSUPPORTED_FORMAT`, `UNSUPPORTED_VERSION`, `RATE_LIMIT`, `SYSTEM_BUSY`, `PIXEL_BUDGET_EXCEEDED`, and `PROCESSING_FAILED`.
-- Rate limiting is per calling UID, with concurrency caps to protect CPU and memory.
-- Decode bounds and dimension checks prevent catastrophic bitmap allocation.
-- Cache is private, content-addressed, bounded, and time-limited.
-- Metadata handling is explicit and defaults are not inferred by the URI layer.
-- Synchronous SDK transform is annotated as worker-thread only, and async SDK APIs dispatch to I/O.
-- Samples demonstrate background I/O and user-readable error handling.
+| ID | Control | Implementation | RFC ref | Tested by |
+|----|---------|----------------|---------|-----------|
+| C1 | `checkUriPermission` on source URI | `app\src\main\java\com\imageshare\app\transform\TransformContentProvider.kt:286` (`callerCanReadSource`) | §2.2 | `app\src\androidTest\java\com\imageshare\app\transform\TransformContentProviderTest.kt:94` (`callerWithoutGrantOnSourceThrowsGrantLost`) |
+| C2 | Per-UID + process-wide rate limit | `app\src\main\java\com\imageshare\app\transform\TransformRateLimiter.kt:6`; wired at `app\src\main\java\com\imageshare\app\transform\TransformContentProvider.kt:332` (100/min/UID, 2 concurrent/UID, 8 process-wide from `app\build.gradle.kts:22-24`) | §2.4 | `TransformContentProviderTest.kt:128` (`perUidRateLimitRejects101stTransform`), `TransformContentProviderTest.kt:137` (`getTypeReturnsNullUnderRateLimit`) |
+| C3 | Pre-flight pixel budget (200 Mpx) | `app\src\main\java\com\imageshare\app\transform\TransformContentProvider.kt:138` (`transformToFile`), `TransformContentProvider.kt:232` (`enforcePixelBudget`), `app\build.gradle.kts:25` | §2.5 | `TransformContentProviderTest.kt:122` (`oversizedSourceThrowsPixelBudgetExceeded`) |
+| C4 | `targetBytes` upper bound (100 MB) | `app\src\main\java\com\imageshare\app\transform\TransformUriParser.kt:104` (`parseTargetBytes`), `app\build.gradle.kts:26` | §2.5 | `TransformUriParserTest.kt:36` (`parsesTargetBytesUpperBound`), `TransformUriParserTest.kt:94` (`targetBytesOverUpperBoundRejected`) |
+| C5 | Cache key includes `callerUid` | `app\src\main\java\com\imageshare\app\transform\TransformCache.kt:28` (`key`) | §3.4 | `app\src\test\java\com\imageshare\app\transform\TransformCacheTest.kt:33` (`keyDiffersByCallerUid`) |
+| C6 | Self-referencing source URI rejected | `app\src\main\java\com\imageshare\app\transform\TransformUriParser.kt:49` | §1.5 step 7 | `TransformUriParserTest.kt:73` (`selfReferenceSourceIsMalformed`), `TransformUriParserTest.kt:110` (`sourceSelfAuthorityRejected`) |
+| C7 | Kill switch | `app\build.gradle.kts:21` (`TRANSFORM_API_ENABLED`), gates `app\src\main\java\com\imageshare\app\transform\TransformContentProvider.kt:35`, `app\src\main\java\com\imageshare\app\transform\TransformContentProvider.kt:48`, `app\src\main\java\com\imageshare\app\transform\TransformContentProvider.kt:78`, `app\src\main\java\com\imageshare\app\transform\TransformContentProvider.kt:92` | §7.2 | (compile-time gate) |
+| C8 | Signature permission declared (passive) | `app\src\main\AndroidManifest.xml:5` (`com.imageshare.app.permission.TRANSFORM_PRO`) | §7.1 | (manual) |
 
 ## Open items
 

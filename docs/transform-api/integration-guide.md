@@ -17,7 +17,8 @@ val request = TransformRequest.builder(sourceUri)
     .longEdge(2048)
     .metadata(TransformRequest.Metadata.StripAll)
     .build()
-val bytes = ImageShareTransform.transformAsync(context, request)
+// Synchronous (must be off the main thread)
+val bytes = ImageShareTransform.transform(applicationContext, request)
 ```
 
 Use the direct provider when you do not want an SDK dependency. The minimal host sample does exactly this by constructing the URI string and opening it with `openInputStream`. The picker host sample shows a more complete direct integration with format, quality, resize, metadata, target byte, cache, and gallery-save controls.
@@ -125,7 +126,15 @@ Opening the transform stream blocks while ImageShare reads, decodes, resizes, en
 
 ## Caching
 
-The provider may cache deterministic outputs under ImageShare private `cacheDir\transform-cache`. Cache keys are derived from source bytes and canonical parameters, not from caller-supplied filenames. Cache entries are opportunistic, private to ImageShare, bounded by size, and swept after 24 hours. Hosts should still cache their own result if they need to display, upload, or save it later, as both samples write the output to the host cache directory.
+ImageShare maintains a per-caller content-addressed disk cache of recent transforms:
+
+- **Budget**: 200 MB hard disk cap + 2000 entry hard count
+- **Expiry**: 24 hours from creation (`createdAtMs` in `.meta` sidecar)
+- **Eviction**: FIFO by `createdAtMs`, oldest first
+- **Isolation**: cache key is SHA-256(callerUid + source + paramsSig); two apps with the same source+params get different cache entries
+- **Reliability**: cache is best-effort; if disk is full or files are corrupted, ImageShare falls back to fresh decode/encode
+
+Repeated identical requests typically return cached bytes in ~10-30 ms vs ~200-600 ms for a fresh decode/encode. Hosts should still cache their own result if they need to display, upload, or save it later, as both samples write the output to the host cache directory.
 
 ## Performance expectations
 
