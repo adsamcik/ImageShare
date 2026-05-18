@@ -47,6 +47,8 @@ public class UriBuilderTest {
         assertEquals("image/png", TransformRequest.Format.Png.mimeType)
         assertEquals("png", TransformRequest.Format.Png.extension)
         assertEquals("image/webp", TransformRequest.Format.WebpLossy.mimeType)
+        assertEquals("webp", TransformRequest.Format.WebpLossy.extension)
+        assertEquals("image/webp", TransformRequest.Format.WebpLossless.mimeType)
         assertEquals("webp", TransformRequest.Format.WebpLossless.extension)
         assertEquals("image/heif", TransformRequest.Format.Heif.mimeType)
         assertEquals("heif", TransformRequest.Format.Heif.extension)
@@ -140,6 +142,13 @@ public class UriBuilderTest {
     public fun validatesAutoQualityRequiresTargetBytes() {
         assertThrows(IllegalArgumentException::class.java) {
             request(quality = TransformRequest.Quality.Auto)
+        }
+    }
+
+    @Test
+    public fun rejectsTransformApiSourceSelfReference() {
+        assertThrows(IllegalArgumentException::class.java) {
+            request(source = Uri.parse("content://com.imageshare.app.transform/v1/jpeg/q85/original/stripall"))
         }
     }
 

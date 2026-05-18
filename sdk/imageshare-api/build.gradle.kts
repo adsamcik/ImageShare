@@ -34,7 +34,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.annotation:annotation:1.8.0")
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)

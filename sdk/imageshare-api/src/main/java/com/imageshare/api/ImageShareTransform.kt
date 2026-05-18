@@ -3,6 +3,7 @@ package com.imageshare.api
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.annotation.WorkerThread
 import com.imageshare.api.internal.UriBuilder
 import java.io.FileNotFoundException
 import kotlinx.coroutines.Dispatchers
@@ -17,9 +18,13 @@ public object ImageShareTransform {
     /**
      * Reads transformed bytes from ImageShare.
      *
+     * This method blocks while the provider reads and encodes the image. Call it from a worker
+     * thread, or use [transformAsync] to dispatch work to [Dispatchers.IO].
+     *
      * Provider [FileNotFoundException] errors are mapped to [TransformException]. Permission
      * failures such as [SecurityException] propagate unchanged.
      */
+    @WorkerThread
     public fun transform(context: Context, request: TransformRequest): ByteArray {
         val transformUri = buildUri(request)
         context.grantUriPermission(

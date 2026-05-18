@@ -12,6 +12,9 @@ public data class TransformRequest(
     public val aspectLock: Boolean = true,
 ) {
     init {
+        require(source.authority != ImageShareTransform.TRANSFORM_AUTHORITY) {
+            "source must not reference the Transform API itself"
+        }
         if (quality is Quality.Auto) {
             require(targetBytes != null && targetBytes > 0) {
                 "Quality.Auto requires targetBytes > 0"
