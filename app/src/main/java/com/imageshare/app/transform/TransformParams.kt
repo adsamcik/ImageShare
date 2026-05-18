@@ -1,0 +1,28 @@
+package com.imageshare.app.transform
+
+import android.net.Uri
+import com.imageshare.app.BuildConfig
+import com.imageshare.core.processing.EncodeFormat
+import com.imageshare.core.processing.MetadataMode
+
+internal val TRANSFORM_AUTHORITY: String = "${BuildConfig.APPLICATION_ID}.transform"
+
+internal data class TransformParams(
+    val source: Uri,
+    val formatToken: String,
+    val format: EncodeFormat,
+    val mimeType: String,
+    val extension: String,
+    val quality: Int?,
+    val targetBytes: Long?,
+    val resize: Resize,
+    val metadata: MetadataMode,
+    val aspectLock: Boolean,
+) {
+    sealed interface Resize {
+        data object Original : Resize
+        data class LongEdge(val pixels: Int) : Resize
+        data class Exact(val width: Int, val height: Int) : Resize
+        data class Percent(val percent: Int) : Resize
+    }
+}
