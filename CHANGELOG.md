@@ -5,12 +5,13 @@ All notable changes to ImageShare are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] — 2026-05-17
+## [Unreleased]
 
-Second release. Smart sharing, design polish, deeper test coverage, and the v2.0 Transform API RFC.
+Pre-launch development. Ship date and v1.0.0 release notes finalized at ship time.
 
 ### Added
 
+- **Transform API (v2.0 RFC approved)** — design doc at `docs/RFCs/0001-transform-api.md`. Implementation in progress.
 - **Smart-share chooser** — custom in-app share dialog showing the user's top 3 most-shared apps as chips, then an alphabetical "All apps" list, with a "More…" fallback to the system chooser. Powered by a new `SharingTargetsRepository` (DataStore-backed) that tracks usage counts and recency. Top-K observation, LRU eviction when at the 50-entry cap, ImageShare-self filter.
 - **Auto-process when shared in** preference (under "Advanced", default off) — when on, `ACTION_SEND` from another app immediately processes with the current preset and goes straight to the share chooser, skipping the source-review screen.
 - **Empty-state illustration** — Material Symbols `add_photo_alternate` icon above the "Hello ImageShare" title so the empty home screen reads as "drop an image" rather than "loading".
@@ -47,18 +48,15 @@ Second release. Smart sharing, design polish, deeper test coverage, and the v2.0
 
 ### Architecture decisions
 
-- ImageShareTheme inner-wrap in `PresetSheet` removed — outer `MainActivity` `ImageShareTheme` is sufficient for production; nested-wrap caused timing-sensitive Compose UI test regression in v1.0 → fixed before tag.
+- ImageShareTheme inner-wrap in `PresetSheet` removed — outer `MainActivity` `ImageShareTheme` is sufficient for production; nested-wrap caused timing-sensitive Compose UI test regression → fixed before any release.
 - `SharingTargetsRepository` uses DataStore + `org.json` (no new deps; serializes as JSON-encoded string in a single preferences key).
 - `Icons.Outlined.AddPhotoAlternate` shipped as a hand-drawn vector drawable (not `material-icons-extended` dependency) to save ~80 KB APK size. Drawable cites Material Symbols as source.
 
-[1.1.0]: https://example.com/imageshare/releases/tag/v1.1.0
-[1.0.0]: https://example.com/imageshare/releases/tag/v1.0.0
+### Pre-Unreleased development log (work prior to first ship)
 
-## [1.0.0] — 2026-05-16
+These sections summarize foundation work done during pre-launch development. Final v1.0.0 release notes will be consolidated at ship time.
 
-First release. Privacy-first Android image processing utility.
-
-### Features
+#### Foundation features (developed pre-launch)
 
 - **5 built-in presets**: Small file (default), Best quality, Social upload (WebP), Email (200KB target-size JPEG), Custom.
 - **Source intake** via Android 14+ photo picker (no broad media permissions) and SAF Open Documents (advanced).
@@ -117,5 +115,3 @@ First release. Privacy-first Android image processing utility.
 8. **Material 3 DayNight theme was light-only** (CRITICAL) — dark-mode users would see bright UI
 
 Each bug has a regression test pinning the contract.
-
-[1.0.0]: https://example.com/imageshare/releases/tag/v1.0.0
