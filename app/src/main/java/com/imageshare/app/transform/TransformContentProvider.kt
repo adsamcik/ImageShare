@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Binder
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import androidx.annotation.VisibleForTesting
 import com.imageshare.app.BuildConfig
 import com.imageshare.core.processing.AlphaPolicy
 import com.imageshare.core.processing.AvifAvailability
@@ -33,7 +34,7 @@ class TransformContentProvider : ContentProvider() {
     private lateinit var cache: TransformCache
 
     override fun onCreate(): Boolean {
-        if (!BuildConfig.TRANSFORM_API_ENABLED) {
+        if (!isTransformApiEnabled()) {
             return false
         }
         val cacheDir = context?.cacheDir ?: return false
@@ -52,7 +53,7 @@ class TransformContentProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
         sortOrder: String?,
     ): Cursor? {
-        if (!BuildConfig.TRANSFORM_API_ENABLED) return null
+        if (!isTransformApiEnabled()) return null
         val parsed = TransformUriParser.parse(uri)
         val params = parsed.getOrElse { error ->
             if (error is UnsupportedOperationException) return null
@@ -75,7 +76,7 @@ class TransformContentProvider : ContentProvider() {
     }
 
     override fun getType(uri: Uri): String? {
-        if (!BuildConfig.TRANSFORM_API_ENABLED) return null
+        if (!isTransformApiEnabled()) return null
         val uid = Binder.getCallingUid()
         return try {
             RATE_LIMITER.recordRequest(uid)
@@ -89,7 +90,7 @@ class TransformContentProvider : ContentProvider() {
     }
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor = try {
-        if (!BuildConfig.TRANSFORM_API_ENABLED) {
+        if (!isTransformApiEnabled()) {
             throw TransformError.ProcessingFailed("Transform API is disabled")
         }
         if (mode != "r") {
@@ -304,6 +305,9 @@ class TransformContentProvider : ContentProvider() {
         TargetSizeEncoder.Config.DEFAULT_QUALITY_MAX,
     )
 
+    private fun isTransformApiEnabled(): Boolean =
+        transformApiEnabledOverrideForTests ?: BuildConfig.TRANSFORM_API_ENABLED
+
     private fun errorCursor(error: TransformError): Cursor = MatrixCursor(arrayOf(ERROR_CODE, ERROR_MESSAGE)).apply {
         addRow(arrayOf(error.code, error.message))
     }
@@ -329,6 +333,9 @@ class TransformContentProvider : ContentProvider() {
     }
 
     companion object {
+        @VisibleForTesting
+        internal var transformApiEnabledOverrideForTests: Boolean? = null
+
         private val RATE_LIMITER = TransformRateLimiter(
             perUidPerMinute = BuildConfig.TRANSFORM_RATE_LIMIT_PER_UID_PER_MINUTE,
             maxConcurrentPerUid = BuildConfig.TRANSFORM_MAX_CONCURRENT_PER_UID,
@@ -336,6 +343,7 @@ class TransformContentProvider : ContentProvider() {
         )
 
         internal fun resetRateLimiterForTests() {
+            transformApiEnabledOverrideForTests = null
             RATE_LIMITER.resetForTests()
         }
 

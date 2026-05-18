@@ -90,6 +90,32 @@ class TransformCacheTest {
         assertFalse(File(tmp.root, "$key.meta").exists())
     }
 
+    @Test fun cacheExpiresAfterTwentyFourHours() {
+        var now = 1_000_000_000L
+        val cache = cache(clock = { now })
+        val key = "5555555555555555555555555555555555555555555555555555555555555555"
+
+        assertNotNull(
+            cache.put(
+                key,
+                "jpg",
+                tempPayload(
+                    "twenty-four-hour-expiry",
+                    byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()),
+                ),
+                "content://source/expiry",
+                1000,
+                "sig",
+                "image/jpeg",
+            ),
+        )
+        assertNotNull(cache.lookup(key, "jpg"))
+
+        now += 25L * 60L * 60L * 1000L
+
+        assertNull(cache.lookup(key, "jpg"))
+    }
+
     @Test fun lookupReturnsNullForCorruptMeta() {
         val key = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
         File(tmp.root, "$key.jpg").writeBytes(byteArrayOf(1, 2, 3))
@@ -101,6 +127,7 @@ class TransformCacheTest {
     }
 
     @Test fun putEvictsOldestWhenOverByteBudget() {
+        // Provider uses TransformCache directly; this locks down production eviction with a tiny test budget.
         var now = 10L
         val cache = cache(maxBytes = 10L, clock = { now })
         val oldest = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"

@@ -28,6 +28,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -249,18 +250,76 @@ class TransformContentProviderTest {
         decoded.recycle()
     }
 
-    @Test fun aspectLockTrueScalesToRequestedBox() {
-        val decoded = decode(openBytes(transformUri(resize = "exact10x20", aspectLock = true)))
-        assertEquals(10, decoded.width)
-        assertEquals(20, decoded.height)
-        decoded.recycle()
+    @Test fun aspectLockTrueAndFalseProduceDifferentPixels() {
+        val source = sourceJpegUri()
+        val locked = decode(openBytes(transformUri(resize = "exact10x20", source = source, aspectLock = true)))
+        val stretched = decode(openBytes(transformUri(resize = "exact10x20", source = source, aspectLock = false)))
+        try {
+            assertEquals(10, locked.width)
+            assertEquals(20, locked.height)
+            assertEquals(10, stretched.width)
+            assertEquals(20, stretched.height)
+            assertNotEquals(
+                "aspectLock=true and aspectLock=false produced identical pixels",
+                pixelHash(locked),
+                pixelHash(stretched),
+            )
+        } finally {
+            locked.recycle()
+            stretched.recycle()
+        }
     }
 
-    @Test fun aspectLockFalseStretchesFreely() {
+    @Test fun aspectLockFalseStretchesFreelyToRequestedCanvas() {
         val decoded = decode(openBytes(transformUri(resize = "exact10x20", aspectLock = false)))
-        assertEquals(10, decoded.width)
-        assertEquals(20, decoded.height)
-        decoded.recycle()
+        try {
+            assertEquals(10, decoded.width)
+            assertEquals(20, decoded.height)
+        } finally {
+            decoded.recycle()
+        }
+    }
+
+    @Test fun killSwitchPreventsTransformOperations() {
+        assertTrue("TRANSFORM_API_ENABLED expected true in debug", BuildConfig.TRANSFORM_API_ENABLED)
+        TransformContentProvider.transformApiEnabledOverrideForTests = false
+        try {
+            val uri = transformUri()
+            assertNull(resolver.query(uri, null, null, null, null))
+            assertNull(resolver.getType(uri))
+            val error = assertFileNotFound(uri)
+            assertTrue(error.message.orEmpty().contains("Transform API is disabled"))
+        } finally {
+            TransformContentProvider.transformApiEnabledOverrideForTests = null
+        }
+    }
+
+    @Test fun cacheRespectsPerUidIsolationByProviderSignatureAndKeyDerivation() {
+        val params = TransformUriParser.parse(
+            transformUri(format = "jpeg", resize = "exact10x20", aspectLock = false),
+        ).getOrThrow()
+        val cacheDir = File(
+            context.cacheDir,
+            "test-provider-uid-isolation-${System.nanoTime()}",
+        ).apply { mkdirs() }
+        try {
+            val cache = TransformCache(cacheDir)
+            val signature = params.canonicalSignature()
+            val first = cache.key(
+                callerUid = 10_500,
+                source = params.source.toString(),
+                paramsSignature = signature,
+            )
+            val second = cache.key(
+                callerUid = 10_501,
+                source = params.source.toString(),
+                paramsSignature = signature,
+            )
+
+            assertNotEquals(first, second)
+        } finally {
+            cacheDir.deleteRecursively()
+        }
     }
 
     @Test fun corruptSourceProducesProcessingFailed() {
@@ -446,6 +505,18 @@ class TransformContentProviderTest {
 
     private fun decode(bytes: ByteArray): Bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         ?: throw AssertionError("Expected decodable image")
+
+    private fun pixelHash(bitmap: Bitmap): Long {
+        var hash = 0L
+        val yStep = maxOf(1, bitmap.height / 8)
+        val xStep = maxOf(1, bitmap.width / 8)
+        for (y in 0 until bitmap.height step yStep) {
+            for (x in 0 until bitmap.width step xStep) {
+                hash = hash * 31 + bitmap.getPixel(x, y)
+            }
+        }
+        return hash
+    }
 
     private fun assertRiffWebp(bytes: ByteArray) {
         assertTrue(bytes.size >= 12)

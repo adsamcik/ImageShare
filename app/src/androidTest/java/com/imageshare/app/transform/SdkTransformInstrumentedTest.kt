@@ -16,6 +16,7 @@ import com.imageshare.api.TransformRequest
 import com.imageshare.api.TransformResult
 import com.imageshare.core.processing.AvifAvailability
 import com.imageshare.core.processing.HeifAvailability
+import com.imageshare.core.processing.MetadataMode
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.runBlocking
@@ -58,6 +59,24 @@ class SdkTransformInstrumentedTest {
 
     @Test fun sdkIsAvailableReturnsTrueWhenInstalled() {
         assertTrue(ImageShareTransform.isAvailable(context))
+    }
+
+    @Test fun sdkBuildUriRoundTripsThroughParser() {
+        val source = Uri.parse("content://com.example/img.jpg")
+        val request = TransformRequest.Builder(source)
+            .format(TransformRequest.Format.Jpeg)
+            .fixedQuality(85)
+            .longEdge(2048)
+            .metadata(TransformRequest.Metadata.StripAll)
+            .build()
+
+        val parsed = TransformUriParser.parse(ImageShareTransform.buildUri(request)).getOrThrow()
+
+        assertEquals("jpeg", parsed.formatToken)
+        assertEquals(85, parsed.quality)
+        assertEquals(TransformParams.Resize.LongEdge(2048), parsed.resize)
+        assertEquals(MetadataMode.StripAll, parsed.metadata)
+        assertEquals(source, parsed.source)
     }
 
     @Test fun sdkPropagatesGrantLost() {
