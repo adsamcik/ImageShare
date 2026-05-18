@@ -17,6 +17,7 @@ dependencyResolutionManagement {
 rootProject.name = "ImageShare"
 
 include(":app")
+include(":sdk:imageshare-api")
 include(":core:processing")
 include(":core:io")
 include(":feature:preset")

@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="com.imageshare.app" />
+        <provider android:authorities="com.imageshare.app.transform" />
+    </queries>
+</manifest>
