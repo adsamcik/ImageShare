@@ -2,12 +2,15 @@ package com.imageshare.app.transform
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Binder
 import android.os.ParcelFileDescriptor
+import android.os.Process
 import android.provider.OpenableColumns
 import com.imageshare.app.BuildConfig
 import com.imageshare.core.processing.AlphaPolicy
@@ -58,8 +61,10 @@ class TransformContentProvider : ContentProvider() {
             return errorCursor(error.toTransformError())
         }
         val file = try {
-            RATE_LIMITER.acquire(Binder.getCallingUid()).use {
-                transformToFile(uri, params)
+            val pid = Binder.getCallingPid()
+            val uid = Binder.getCallingUid()
+            RATE_LIMITER.acquire(uid).use {
+                transformToFile(uri, params, pid, uid)
             }
         } catch (error: TransformError) {
             return errorCursor(error)
@@ -73,9 +78,16 @@ class TransformContentProvider : ContentProvider() {
 
     override fun getType(uri: Uri): String? {
         if (!BuildConfig.TRANSFORM_API_ENABLED) return null
-        val params = TransformUriParser.parse(uri).getOrNull() ?: return null
-        RATE_LIMITER.recordRequest(Binder.getCallingUid())
-        return params.mimeType
+        val uid = Binder.getCallingUid()
+        return try {
+            RATE_LIMITER.recordRequest(uid)
+            val params = TransformUriParser.parse(uri).getOrNull() ?: return null
+            params.mimeType
+        } catch (error: TransformError) {
+            null
+        } catch (error: Exception) {
+            null
+        }
     }
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor = try {
@@ -86,8 +98,10 @@ class TransformContentProvider : ContentProvider() {
             throw TransformError.MalformedUri("Only read mode is supported")
         }
         val params = TransformUriParser.parse(uri).getOrElse { error -> throw error.toTransformError() }
-        val file = RATE_LIMITER.acquire(Binder.getCallingUid()).use {
-            transformToFile(uri, params)
+        val pid = Binder.getCallingPid()
+        val uid = Binder.getCallingUid()
+        val file = RATE_LIMITER.acquire(uid).use {
+            transformToFile(uri, params, pid, uid)
         }
         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     } catch (error: FileNotFoundException) {
@@ -123,12 +137,21 @@ class TransformContentProvider : ContentProvider() {
         super.onTrimMemory(level)
     }
 
-    private fun transformToFile(uri: Uri, params: TransformParams): File {
+    private fun transformToFile(uri: Uri, params: TransformParams, callerPid: Int, callerUid: Int): File {
+        val ctx = context ?: throw TransformError.ProcessingFailed("Provider context is unavailable")
+        val resolver = ctx.contentResolver
+        if (callerUid != Process.myUid() && ctx.checkUriPermission(
+                params.source,
+                callerPid,
+                callerUid,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            throw TransformError.GrantLost("caller does not hold read grant on source")
+        }
         memoryResults[uri.toString()]?.takeIf { it.isFile }?.let { return it }
         validateFormatAvailable(params)
-        val ctx = context ?: throw TransformError.ProcessingFailed("Provider context is unavailable")
         val tempDir = File(ctx.cacheDir, TEMP_DIR_NAME).apply { mkdirs() }
-        val resolver = ctx.contentResolver
         try {
             resolver.openInputStream(params.source)?.close()
         } catch (error: SecurityException) {

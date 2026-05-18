@@ -11,6 +11,11 @@ import android.os.ParcelFileDescriptor;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.util.zip.CRC32;
+import java.util.zip.DeflaterOutputStream;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class RevokingSourceProvider extends ContentProvider {
@@ -26,9 +31,17 @@ public class RevokingSourceProvider extends ContentProvider {
         if (!"r".equals(mode)) {
             throw new FileNotFoundException("read-only");
         }
-        if (OPENS.incrementAndGet() > 1) {
+        String path = uri.getPath() == null ? "" : uri.getPath();
+        if (path.contains("huge")) {
+            return ParcelFileDescriptor.open(hugePngFile(), ParcelFileDescriptor.MODE_READ_ONLY);
+        }
+        if (!path.contains("stable") && OPENS.incrementAndGet() > 1) {
             throw new SecurityException("grant revoked after pre-flight");
         }
+        return ParcelFileDescriptor.open(jpegFile(), ParcelFileDescriptor.MODE_READ_ONLY);
+    }
+
+    private File jpegFile() throws FileNotFoundException {
         if (getContext() == null) {
             throw new FileNotFoundException("missing context");
         }
@@ -50,7 +63,61 @@ public class RevokingSourceProvider extends ContentProvider {
                 bitmap.recycle();
             }
         }
-        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
+        return file;
+    }
+
+    private File hugePngFile() throws FileNotFoundException {
+        if (getContext() == null) {
+            throw new FileNotFoundException("missing context");
+        }
+        File file = new File(getContext().getCacheDir(), "huge-20000x20000-valid.png");
+        if (!file.isFile()) {
+            try (FileOutputStream output = new FileOutputStream(file)) {
+                writeHugePng(output, 20_000, 20_000);
+            } catch (Exception error) {
+                throw new FileNotFoundException(error.getMessage());
+            }
+        }
+        return file;
+    }
+
+    private static void writeHugePng(FileOutputStream output, int width, int height) throws IOException {
+        output.write(new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
+        ByteArrayOutputStream ihdr = new ByteArrayOutputStream();
+        try (DataOutputStream data = new DataOutputStream(ihdr)) {
+            data.writeInt(width);
+            data.writeInt(height);
+            data.writeByte(8);
+            data.writeByte(0);
+            data.writeByte(0);
+            data.writeByte(0);
+            data.writeByte(0);
+        }
+        writePngChunk(output, "IHDR", ihdr.toByteArray());
+        ByteArrayOutputStream compressed = new ByteArrayOutputStream();
+        try (DeflaterOutputStream deflater = new DeflaterOutputStream(compressed)) {
+            byte[] row = new byte[width + 1];
+            for (int y = 0; y < height; y++) {
+                deflater.write(row);
+            }
+        }
+        writePngChunk(output, "IDAT", compressed.toByteArray());
+        writePngChunk(output, "IEND", new byte[0]);
+    }
+
+    private static void writePngChunk(FileOutputStream output, String type, byte[] data) throws IOException {
+        try (ByteArrayOutputStream chunkBytes = new ByteArrayOutputStream();
+             DataOutputStream chunk = new DataOutputStream(chunkBytes)) {
+            chunk.writeInt(data.length);
+            byte[] typeBytes = type.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            chunk.write(typeBytes);
+            chunk.write(data);
+            CRC32 crc = new CRC32();
+            crc.update(typeBytes);
+            crc.update(data);
+            chunk.writeInt((int) crc.getValue());
+            output.write(chunkBytes.toByteArray());
+        }
     }
 
     @Override
