@@ -18,6 +18,7 @@ import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.util.zip.CRC32
 import java.util.zip.DeflaterOutputStream
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -147,6 +148,15 @@ class TransformContentProviderTest {
         assertNotNull(decoded)
         assertEquals(16, maxOf(decoded.width, decoded.height))
         decoded.recycle()
+    }
+
+    @Test fun cacheHitReturnsSameBytesOnSecondCall() {
+        val uri = transformUri(format = "jpeg", source = sourceJpegUri())
+
+        val first = openBytes(uri)
+        val second = openBytes(uri)
+
+        assertArrayEquals(first, second)
     }
 
     private fun openBytes(uri: Uri): ByteArray = resolver.openInputStream(uri)?.use { it.readBytes() }

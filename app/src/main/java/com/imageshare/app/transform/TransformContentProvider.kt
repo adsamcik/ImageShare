@@ -25,24 +25,23 @@ import com.imageshare.core.processing.Resizer
 import com.imageshare.core.processing.TargetSizeEncoder
 import java.io.File
 import java.io.FileNotFoundException
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlinx.coroutines.runBlocking
 
 class TransformContentProvider : ContentProvider() {
-    // TODO(TXA-2): normalize transform cache keys and enforce bounded per-request cache cleanup.
-    private val memoryResults = ConcurrentHashMap<String, File>()
+    private lateinit var cache: TransformCache
 
     override fun onCreate(): Boolean {
         if (!BuildConfig.TRANSFORM_API_ENABLED) {
             return false
         }
-        context?.cacheDir?.let { cacheDir ->
-            val tempDir = File(cacheDir, TEMP_DIR_NAME)
-            tempDir.mkdirs()
-            sweepTempDir(tempDir)
-        }
+        val cacheDir = context?.cacheDir ?: return false
+        val tempDir = File(cacheDir, TEMP_DIR_NAME)
+        tempDir.mkdirs()
+        sweepTempDir(tempDir)
+        cache = TransformCache(File(cacheDir, CACHE_DIR_NAME))
+        cache.sweepExpired()
         return true
     }
 
@@ -142,7 +141,9 @@ class TransformContentProvider : ContentProvider() {
         if (!callerCanReadSource(ctx, params.source, callerPid, callerUid)) {
             throw TransformError.GrantLost("caller does not hold read grant on source")
         }
-        memoryResults[uri.toString()]?.takeIf { it.isFile }?.let { return it }
+        val signature = params.canonicalSignature()
+        val key = cache.key(callerUid, params.source.toString(), signature)
+        cache.lookup(key, params.extension)?.let { return it }
         validateFormatAvailable(params)
         val tempDir = File(ctx.cacheDir, TEMP_DIR_NAME).apply { mkdirs() }
         try {
@@ -217,8 +218,15 @@ class TransformContentProvider : ContentProvider() {
         }
         val output = File(tempDir, "${System.nanoTime()}.${params.extension}")
         output.writeBytes(outputBytes)
-        memoryResults[uri.toString()] = output
-        return output
+        return cache.put(
+            key = key,
+            ext = params.extension,
+            tempPayload = output,
+            sourceUri = params.source.toString(),
+            callerUid = callerUid,
+            paramsSignature = signature,
+            mime = params.mimeType,
+        ) ?: output
     }
 
     private fun enforcePixelBudget(width: Int, height: Int) {
@@ -332,6 +340,7 @@ class TransformContentProvider : ContentProvider() {
         }
 
         private const val TEMP_DIR_NAME = "transform-tmp"
+        private const val CACHE_DIR_NAME = "transform-cache"
         private const val TEMP_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val DEFAULT_AUTO_QUALITY = 80
         private const val OPAQUE_WHITE = -0x1
