@@ -7,13 +7,20 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.imageshare.app.BuildConfig
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.OutputStream
+import java.util.zip.CRC32
+import java.util.zip.DeflaterOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -21,6 +28,11 @@ import org.junit.runner.RunWith
 class TransformContentProviderTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val resolver = context.contentResolver
+
+    @Before fun resetRateLimiter() {
+        TransformContentProvider.resetRateLimiterForTests()
+        RevokingSourceProvider.reset()
+    }
 
     @Test fun jpegTransformHasJpegMagic() {
         val bytes = openBytes(transformUri())
@@ -64,6 +76,27 @@ class TransformContentProviderTest {
         val uri = transformUri(source = Uri.parse("content://missing.source.provider/image/1"))
         val error = assertFileNotFound(uri)
         assertTrue(error.message.orEmpty().startsWith("ImageShareTransform: GRANT_LOST:"))
+    }
+
+    @Test fun revokedGrantMidPipelineThrowsGrantLost() {
+        val uri = transformUri(source = Uri.parse("content://com.imageshare.app.testsource/image/1"))
+        val error = assertFileNotFound(uri)
+        assertTrue(error.message.orEmpty().contains("GRANT_LOST"))
+    }
+
+    @Test fun oversizedSourceThrowsPixelBudgetExceeded() {
+        val uri = transformUri(source = hugePngUri())
+        val error = assertFileNotFound(uri)
+        assertTrue(error.message.orEmpty().contains("PIXEL_BUDGET_EXCEEDED"))
+    }
+
+    @Test fun perUidRateLimitRejects101stTransform() {
+        val uri = transformUri()
+        repeat(BuildConfig.TRANSFORM_RATE_LIMIT_PER_UID_PER_MINUTE) {
+            openBytes(uri)
+        }
+        val error = assertFileNotFound(uri)
+        assertTrue(error.message.orEmpty().contains("RATE_LIMIT"))
     }
 
     @Test fun pngFromJpegSourceHasPngMagicAndMimeType() {
@@ -111,6 +144,50 @@ class TransformContentProviderTest {
         .appendQueryParameter("source", source.toString())
         .apply { targetBytes?.let { appendQueryParameter("targetBytes", it.toString()) } }
         .build()
+
+    private fun hugePngUri(): Uri {
+        val dir = File(context.cacheDir, "shared-output").apply { mkdirs() }
+        val file = File(dir, "huge-20000x20000-valid.png")
+        if (!file.isFile) {
+            file.outputStream().use { output -> writeHugePng(output, width = 20_000, height = 20_000) }
+        }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.shareprovider", file)
+        context.grantUriPermission(context.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        return uri
+    }
+
+    private fun writeHugePng(output: OutputStream, width: Int, height: Int) {
+        output.write(PNG_MAGIC)
+        val ihdr = ByteArrayOutputStream()
+        DataOutputStream(ihdr).use { data ->
+            data.writeInt(width)
+            data.writeInt(height)
+            data.writeByte(8)
+            data.writeByte(0)
+            data.writeByte(0)
+            data.writeByte(0)
+            data.writeByte(0)
+        }
+        writePngChunk(output, "IHDR", ihdr.toByteArray())
+        val compressed = ByteArrayOutputStream()
+        DeflaterOutputStream(compressed).use { deflater ->
+            val row = ByteArray(width + 1)
+            repeat(height) { deflater.write(row) }
+        }
+        writePngChunk(output, "IDAT", compressed.toByteArray())
+        writePngChunk(output, "IEND", ByteArray(0))
+    }
+
+    private fun writePngChunk(output: OutputStream, type: String, data: ByteArray) {
+        DataOutputStream(output).writeInt(data.size)
+        val typeBytes = type.toByteArray(Charsets.US_ASCII)
+        output.write(typeBytes)
+        output.write(data)
+        val crc = CRC32()
+        crc.update(typeBytes)
+        crc.update(data)
+        DataOutputStream(output).writeInt(crc.value.toInt())
+    }
 
     private fun sourceJpegUri(): Uri {
         val dir = File(context.cacheDir, "shared-output").apply { mkdirs() }

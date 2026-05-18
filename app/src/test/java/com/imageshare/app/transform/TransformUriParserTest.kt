@@ -1,6 +1,7 @@
 package com.imageshare.app.transform
 
 import android.net.Uri
+import com.imageshare.app.BuildConfig
 import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.core.processing.MetadataMode
 import org.junit.Assert.assertEquals
@@ -31,6 +32,13 @@ class TransformUriParserTest {
         val params = parseOk(quality = "qauto", query = mapOf("targetBytes" to "1024"))
         assertNull(params.quality)
         assertEquals(1024L, params.targetBytes)
+    }
+    @Test fun parsesTargetBytesUpperBound() {
+        val params = parseOk(quality = "qauto", query = mapOf("targetBytes" to BuildConfig.TRANSFORM_MAX_TARGET_BYTES.toString()))
+        assertEquals(BuildConfig.TRANSFORM_MAX_TARGET_BYTES, params.targetBytes)
+        assertFailure<TransformError.MalformedUri>(
+            uri(quality = "qauto", query = mapOf("targetBytes" to (BuildConfig.TRANSFORM_MAX_TARGET_BYTES + 1).toString())),
+        )
     }
     @Test fun parsesLongEdgeResize() = assertEquals(TransformParams.Resize.LongEdge(1600), parseOk(resize = "longEdge1600").resize)
     @Test fun parsesExactResizeDefaultAspectLock() {

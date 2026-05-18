@@ -1,6 +1,7 @@
 package com.imageshare.app.transform
 
 import android.net.Uri
+import com.imageshare.app.BuildConfig
 import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.core.processing.MetadataMode
 
@@ -104,9 +105,13 @@ internal object TransformUriParser {
         if (raw == null) return Result.success(null)
         val value = raw.toLongOrNull()
             ?: return Result.failure(TransformError.MalformedUri("targetBytes must be a positive integer"))
-        return if (value > 0) Result.success(value) else Result.failure(
-            TransformError.MalformedUri("targetBytes must be > 0"),
-        )
+        return when {
+            value <= 0 -> Result.failure(TransformError.MalformedUri("targetBytes must be > 0"))
+            value > BuildConfig.TRANSFORM_MAX_TARGET_BYTES -> Result.failure(
+                TransformError.MalformedUri("targetBytes must be <= ${BuildConfig.TRANSFORM_MAX_TARGET_BYTES}"),
+            )
+            else -> Result.success(value)
+        }
     }
 
     private fun parseAspectLock(raw: String?, resize: TransformParams.Resize): Result<Boolean> = when (raw) {
@@ -124,7 +129,7 @@ internal object TransformUriParser {
             Result.failure(TransformError.MalformedUri("longEdge must be in 1..32768"))
         }
         is TransformParams.Resize.Exact -> if (
-            resize.width > 0 && resize.height > 0 && resize.width.toLong() * resize.height.toLong() <= MAX_PIXELS
+            resize.width > 0 && resize.height > 0 && resize.width.toLong() * resize.height.toLong() <= BuildConfig.TRANSFORM_MAX_PIXELS
         ) {
             Result.success(Unit)
         } else {
@@ -148,7 +153,6 @@ internal object TransformUriParser {
     private const val MAX_QUALITY = 100
     private const val MAX_LONG_EDGE = 32768
     private const val MAX_PERCENT = 200
-    private const val MAX_PIXELS = 200_000_000L
     private val QualityRegex = Regex("q\\d+")
     private val LongEdgeRegex = Regex("longEdge\\d+")
     private val ExactRegex = Regex("exact\\d+x\\d+")

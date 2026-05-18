@@ -6,11 +6,13 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Binder
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import com.imageshare.app.BuildConfig
 import com.imageshare.core.processing.AlphaPolicy
 import com.imageshare.core.processing.AvifAvailability
+import com.imageshare.core.processing.DecodeError
 import com.imageshare.core.processing.Decoder
 import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.core.processing.Encoder
@@ -56,7 +58,9 @@ class TransformContentProvider : ContentProvider() {
             return errorCursor(error.toTransformError())
         }
         val file = try {
-            transformToFile(uri, params)
+            RATE_LIMITER.acquire(Binder.getCallingUid()).use {
+                transformToFile(uri, params)
+            }
         } catch (error: TransformError) {
             return errorCursor(error)
         } catch (error: Exception) {
@@ -69,7 +73,9 @@ class TransformContentProvider : ContentProvider() {
 
     override fun getType(uri: Uri): String? {
         if (!BuildConfig.TRANSFORM_API_ENABLED) return null
-        return TransformUriParser.parse(uri).getOrNull()?.mimeType
+        val params = TransformUriParser.parse(uri).getOrNull() ?: return null
+        RATE_LIMITER.recordRequest(Binder.getCallingUid())
+        return params.mimeType
     }
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor = try {
@@ -80,7 +86,9 @@ class TransformContentProvider : ContentProvider() {
             throw TransformError.MalformedUri("Only read mode is supported")
         }
         val params = TransformUriParser.parse(uri).getOrElse { error -> throw error.toTransformError() }
-        val file = transformToFile(uri, params)
+        val file = RATE_LIMITER.acquire(Binder.getCallingUid()).use {
+            transformToFile(uri, params)
+        }
         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     } catch (error: FileNotFoundException) {
         if (error.message.orEmpty().startsWith(TransformError.PREFIX)) {
@@ -110,6 +118,11 @@ class TransformContentProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
     ): Int = throw UnsupportedOperationException("Transform API is read-only")
 
+    override fun onTrimMemory(level: Int) {
+        RATE_LIMITER.trim()
+        super.onTrimMemory(level)
+    }
+
     private fun transformToFile(uri: Uri, params: TransformParams): File {
         memoryResults[uri.toString()]?.takeIf { it.isFile }?.let { return it }
         validateFormatAvailable(params)
@@ -124,9 +137,10 @@ class TransformContentProvider : ContentProvider() {
             throw TransformError.GrantLost("Source URI is unreadable or grant was revoked", error)
         }
         val outputBytes = try {
+            val decoder = Decoder(resolver)
+            val metadata = decoder.readMetadata(params.source)
+            enforcePixelBudget(metadata.width, metadata.height)
             runBlocking {
-                val decoder = Decoder(resolver)
-                val metadata = decoder.readMetadata(params.source)
                 val decodeLongEdge = decodeLongEdgeFor(params, metadata.width, metadata.height)
                 val decoded = decoder.decode(params.source, decodeLongEdge)
                 val bitmap = resize(decoded.bitmap, params, metadata.width, metadata.height)
@@ -161,19 +175,41 @@ class TransformContentProvider : ContentProvider() {
                     }
                 }
             }
-        } catch (error: SecurityException) {
-            throw TransformError.GrantLost("Read grant for source URI is missing or revoked", error)
-        } catch (error: FileNotFoundException) {
-            throw TransformError.GrantLost("Source URI is unreadable or grant was revoked", error)
         } catch (error: TransformError) {
             throw error
         } catch (error: Exception) {
-            throw TransformError.ProcessingFailed(error.message ?: "Transform failed", error)
+            val cause = (error as? DecodeError.IoError)?.cause
+            when {
+                error is SecurityException -> throw TransformError.GrantLost(
+                    "Read grant for source URI is missing or revoked",
+                    error,
+                )
+                error is FileNotFoundException -> throw TransformError.GrantLost(
+                    "Source URI is unreadable or grant was revoked",
+                    error,
+                )
+                cause is SecurityException -> throw TransformError.GrantLost(
+                    "Read grant for source URI is missing or revoked",
+                    cause,
+                )
+                cause is FileNotFoundException -> throw TransformError.GrantLost(
+                    "Source URI is unreadable or grant was revoked",
+                    cause,
+                )
+                else -> throw TransformError.ProcessingFailed(error.message ?: "Transform failed", error)
+            }
         }
         val output = File(tempDir, "${System.nanoTime()}.${params.extension}")
         output.writeBytes(outputBytes)
         memoryResults[uri.toString()] = output
         return output
+    }
+
+    private fun enforcePixelBudget(width: Int, height: Int) {
+        val pixels = width.toLong() * height.toLong()
+        if (pixels > BuildConfig.TRANSFORM_MAX_PIXELS) {
+            throw TransformError.PixelBudgetExceeded
+        }
     }
 
     private fun resize(bitmap: Bitmap, params: TransformParams, sourceWidth: Int, sourceHeight: Int): Bitmap =
@@ -254,7 +290,17 @@ class TransformContentProvider : ContentProvider() {
         }
     }
 
-    private companion object {
+    companion object {
+        private val RATE_LIMITER = TransformRateLimiter(
+            perUidPerMinute = BuildConfig.TRANSFORM_RATE_LIMIT_PER_UID_PER_MINUTE,
+            maxConcurrentPerUid = BuildConfig.TRANSFORM_MAX_CONCURRENT_PER_UID,
+            maxConcurrentProcessWide = BuildConfig.TRANSFORM_MAX_CONCURRENT_PROCESS_WIDE,
+        )
+
+        internal fun resetRateLimiterForTests() {
+            RATE_LIMITER.resetForTests()
+        }
+
         private const val TEMP_DIR_NAME = "transform-tmp"
         private const val TEMP_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val DEFAULT_AUTO_QUALITY = 80

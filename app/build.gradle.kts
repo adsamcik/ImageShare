@@ -19,6 +19,11 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "TRANSFORM_API_ENABLED", "true")
+        buildConfigField("int", "TRANSFORM_RATE_LIMIT_PER_UID_PER_MINUTE", "100")
+        buildConfigField("int", "TRANSFORM_MAX_CONCURRENT_PER_UID", "2")
+        buildConfigField("int", "TRANSFORM_MAX_CONCURRENT_PROCESS_WIDE", "8")
+        buildConfigField("long", "TRANSFORM_MAX_PIXELS", "200_000_000L")
+        buildConfigField("long", "TRANSFORM_MAX_TARGET_BYTES", "100L * 1024L * 1024L")
     }
 
     compileOptions {

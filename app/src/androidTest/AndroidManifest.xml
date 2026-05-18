@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider
+            android:name="com.imageshare.app.transform.RevokingSourceProvider"
+            android:authorities="com.imageshare.app.testsource"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>
