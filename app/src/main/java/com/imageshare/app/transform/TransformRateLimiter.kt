@@ -1,5 +1,6 @@
 package com.imageshare.app.transform
 
+import androidx.annotation.VisibleForTesting
 import java.util.ArrayDeque
 
 internal class TransformRateLimiter(
@@ -60,6 +61,7 @@ internal class TransformRateLimiter(
         }
     }
 
+    @VisibleForTesting
     fun resetForTests() {
         synchronized(lock) {
             states.clear()

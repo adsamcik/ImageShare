@@ -1,15 +1,27 @@
 package com.imageshare.app.transform
 
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.net.Uri
 import com.imageshare.app.BuildConfig
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.core.content.FileProvider
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
+import java.io.File
 import java.io.FileNotFoundException
+import java.io.FileOutputStream
+import java.util.zip.CRC32
+import java.util.zip.DeflaterOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -23,6 +35,7 @@ class TransformContentProviderTest {
     @Before fun resetRateLimiter() {
         TransformContentProvider.resetRateLimiterForTests()
         RevokingSourceProvider.reset()
+        grantTestSourceRead(Uri.parse("content://com.imageshare.app.testsource/image/1"))
     }
 
     @Test fun jpegTransformHasJpegMagic() {
@@ -70,11 +83,23 @@ class TransformContentProviderTest {
     }
 
     @Test fun callerWithoutGrantOnSourceThrowsGrantLost() {
-        val uri = transformUri(source = Uri.parse("content://com.example.no-such-authority/image.jpg"))
-        val error = assertFileNotFound(uri)
+        val unreachable = Uri.parse("content://com.example.no-such-authority/image.jpg")
+        val transformUri = Uri.parse(
+            "content://${BuildConfig.APPLICATION_ID}.transform/v1/jpeg/q80/original/stripall?source=" +
+                Uri.encode(unreachable.toString()),
+        )
+        val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
+        val ex = assertThrows(FileNotFoundException::class.java) {
+            resolver.openFileDescriptor(transformUri, "r")
+        }
+        val msg = ex.message ?: ""
         assertTrue(
-            "expected GRANT_LOST, got: ${error.message}",
-            error.message.orEmpty().contains("GRANT_LOST"),
+            "expected GRANT_LOST: $msg",
+            msg.contains("GRANT_LOST"),
+        )
+        assertTrue(
+            "expected the new checkUriPermission branch to fire, got: $msg",
+            msg.contains("caller does not hold read grant on source"),
         )
     }
 
@@ -155,11 +180,94 @@ class TransformContentProviderTest {
         .build()
 
     private fun hugePngUri(): Uri {
-        return Uri.parse("content://com.imageshare.app.testsource/huge/image.png")
+        val file = File(sharedOutputDir(), "huge-20000x20000-valid.png")
+        if (!file.isFile) {
+            FileOutputStream(file).use { writeHugePng(it, 20_000, 20_000) }
+        }
+        return fileProviderUri(file)
     }
 
     private fun sourceJpegUri(): Uri {
-        return Uri.parse("content://com.imageshare.app.testsource/stable/image.jpg")
+        val file = File(sharedOutputDir(), "transform-source.jpg")
+        if (!file.isFile) {
+            val bitmap = Bitmap.createBitmap(24, 16, Bitmap.Config.ARGB_8888)
+            try {
+                for (y in 0 until bitmap.height) {
+                    for (x in 0 until bitmap.width) {
+                        bitmap.setPixel(x, y, Color.rgb(64, x * 255 / bitmap.width, y * 255 / bitmap.height))
+                    }
+                }
+                FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+            } finally {
+                bitmap.recycle()
+            }
+        }
+        return fileProviderUri(file)
+    }
+
+    private fun sharedOutputDir(): File = File(context.cacheDir, "shared-output").apply { mkdirs() }
+
+    private fun fileProviderUri(file: File): Uri {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.shareprovider", file)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        listOf(context.packageName, instrumentation.context.packageName).distinct().forEach { packageName ->
+            context.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return uri
+    }
+
+    private fun writeHugePng(output: FileOutputStream, width: Int, height: Int) {
+        output.write(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+        val ihdr = ByteArrayOutputStream()
+        DataOutputStream(ihdr).use { data ->
+            data.writeInt(width)
+            data.writeInt(height)
+            data.writeByte(8)
+            data.writeByte(0)
+            data.writeByte(0)
+            data.writeByte(0)
+            data.writeByte(0)
+        }
+        writePngChunk(output, "IHDR", ihdr.toByteArray())
+        val compressed = ByteArrayOutputStream()
+        DeflaterOutputStream(compressed).use { deflater ->
+            val row = ByteArray(width + 1)
+            repeat(height) {
+                deflater.write(row)
+            }
+        }
+        writePngChunk(output, "IDAT", compressed.toByteArray())
+        writePngChunk(output, "IEND", ByteArray(0))
+    }
+
+    private fun writePngChunk(output: FileOutputStream, type: String, data: ByteArray) {
+        val chunkBytes = ByteArrayOutputStream()
+        DataOutputStream(chunkBytes).use { chunk ->
+            chunk.writeInt(data.size)
+            val typeBytes = type.toByteArray(Charsets.US_ASCII)
+            chunk.write(typeBytes)
+            chunk.write(data)
+            val crc = CRC32()
+            crc.update(typeBytes)
+            crc.update(data)
+            chunk.writeInt(crc.value.toInt())
+        }
+        output.write(chunkBytes.toByteArray())
+    }
+
+    private fun grantTestSourceRead(uri: Uri) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val packages = listOf(
+            instrumentation.targetContext.packageName,
+            instrumentation.context.packageName,
+        ).distinct()
+        packages.forEach { packageName ->
+            instrumentation.context.grantUriPermission(
+                packageName,
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
     }
 
     private companion object {

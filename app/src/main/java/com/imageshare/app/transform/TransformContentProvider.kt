@@ -10,7 +10,6 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Binder
 import android.os.ParcelFileDescriptor
-import android.os.Process
 import android.provider.OpenableColumns
 import com.imageshare.app.BuildConfig
 import com.imageshare.core.processing.AlphaPolicy
@@ -140,13 +139,7 @@ class TransformContentProvider : ContentProvider() {
     private fun transformToFile(uri: Uri, params: TransformParams, callerPid: Int, callerUid: Int): File {
         val ctx = context ?: throw TransformError.ProcessingFailed("Provider context is unavailable")
         val resolver = ctx.contentResolver
-        if (callerUid != Process.myUid() && ctx.checkUriPermission(
-                params.source,
-                callerPid,
-                callerUid,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (!callerCanReadSource(ctx, params.source, callerPid, callerUid)) {
             throw TransformError.GrantLost("caller does not hold read grant on source")
         }
         memoryResults[uri.toString()]?.takeIf { it.isFile }?.let { return it }
@@ -280,6 +273,20 @@ class TransformContentProvider : ContentProvider() {
             EncodeFormat.WEBP_LOSSLESS,
             -> Unit
         }
+    }
+
+    private fun callerCanReadSource(ctx: android.content.Context, source: Uri, callerPid: Int, callerUid: Int): Boolean {
+        if (ctx.checkUriPermission(
+                source,
+                callerPid,
+                callerUid,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            return true
+        }
+        val authority = source.authority ?: return false
+        return ctx.packageManager.resolveContentProvider(authority, 0)?.applicationInfo?.uid == callerUid
     }
 
     private fun displayNameFor(params: TransformParams): String = "imageshare-transform.${params.extension}"
