@@ -4,8 +4,51 @@ build/
 local.properties
 .idea/
 *.iml
+.vscode/
 captures/
 .cxx/
 .kotlin/
 app/build/generated/source/ksp/
 
+# Local release/signing material
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+keystore.properties
+signing.properties
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+secrets.properties
+google-services.json
+service-account*.json
+
+# Local build outputs and reports
+*.apk
+*.aab
+*.apks
+*.aar
+lint-results*.html
+lint-results*.xml
+lint-results*.txt
+
+# Local test artifacts
+e2e-*.jpg
+e2e-*.gif
+e2e-*.heic
+e2e-*.webp
+generate-phase-b-fixtures.py
+imageshare-emulator-launch.png
+imageshare-ui.xml
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+
+# Test reports
+**/build/reports/tests/
+**/build/test-results/

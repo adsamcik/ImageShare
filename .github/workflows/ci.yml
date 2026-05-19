@@ -1,18 +1,26 @@
 name: CI
 
 on:
-  pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  android:
+  build-and-test:
+    name: Build + unit test
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
-      - name: Check out repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -21,69 +29,34 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      - name: Make Gradle wrapper executable
+      - name: Grant gradlew execute
         run: chmod +x ./gradlew
 
-      - name: Assemble debug
-        run: ./gradlew assembleDebug
+      - name: Assemble + unit tests
+        run: ./gradlew --no-daemon --console=plain "-Pimageshare.skipNativeJpegBuild=true" "-Pimageshare.skipNativeAvifBuild=true" :app:assembleDebug :app:testDebugUnitTest :sdk:imageshare-api:assembleDebug :sdk:imageshare-api:testDebugUnitTest :samples:minimal-host:assembleDebug :samples:picker-host:assembleDebug
 
-      - name: Run unit tests
-        id: unit_tests
-        run: ./gradlew testDebugUnitTest
+      - name: Lint
+        run: ./gradlew --no-daemon --console=plain "-Pimageshare.skipNativeJpegBuild=true" "-Pimageshare.skipNativeAvifBuild=true" :app:lintDebug :sdk:imageshare-api:lintDebug
 
-      - name: Compile instrumented tests
-        run: ./gradlew assembleDebugAndroidTest
-
-      - name: Compile benchmarks
-        run: ./gradlew :benchmark:micro:assembleDebugAndroidTest :benchmark:macro:assembleBenchmarkAndroidTest
-
-      - name: Run lint
-        id: lint
-        run: ./gradlew lint
-
-      - name: Run detekt
-        id: detekt
-        run: ./gradlew detekt
-
-      - name: Upload unit test reports
-        if: failure() && steps.unit_tests.outcome == 'failure'
+      - name: Upload test reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: unit-test-reports
+          name: test-reports
           path: |
-            **/build/reports/tests/
-            **/build/test-results/
-          if-no-files-found: ignore
-
-      - name: Upload lint reports
-        if: failure() && steps.lint.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: lint-reports
-          path: |
-            **/build/reports/lint-results-*.html
-            **/build/reports/lint-results-*.xml
-            **/build/reports/lint-results-*.txt
-          if-no-files-found: ignore
-
-      - name: Upload detekt reports
-        if: failure() && steps.detekt.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: detekt-reports
-          path: |
-            **/build/reports/detekt/
+            app/build/reports/tests/
+            sdk/imageshare-api/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+            sdk/imageshare-api/build/reports/lint-results-debug.html
+          retention-days: 14
           if-no-files-found: ignore

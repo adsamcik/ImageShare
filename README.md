@@ -1,31 +1,83 @@
 # ImageShare
 
-ImageShare is a fast Android image preparation and sharing utility; see `plan.md` in the session workspace for the broader delivery plan.
+> Privacy-first Android image sharing with on-device format conversion, quality optimization, and metadata stripping. Now exposes a cross-app **Transform API** for other apps to leverage the same pipeline without users leaving them.
 
-This repository is currently Phase 0 scaffolding: a Kotlin-only Android project with Jetpack Compose UI, placeholder feature/core modules, lint, unit tests, and detekt wired into Gradle.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![CI](https://github.com/adsamcik/ImageShare/actions/workflows/ci.yml/badge.svg)](https://github.com/adsamcik/ImageShare/actions/workflows/ci.yml)
+[![min sdk](https://img.shields.io/badge/minSdk-26-brightgreen)](https://developer.android.com/about/versions/oreo)
+
+## Features
+
+- **Privacy-first**: nothing leaves the device. No telemetry, no analytics, no network calls.
+- **Smart sharing**: top-3 most-used targets + alphabetical fallback, learned from your behavior.
+- **Format conversion**: JPEG, PNG, WebP, HEIF, AVIF.
+- **Quality presets**: Email (200 KB target), Web (1 MB target), Original, custom.
+- **Metadata control**: strip all, preserve orientation-safe subset, or keep all.
+- **Transform API**: other apps can leverage ImageShare's pipeline without users leaving them. See [`docs/transform-api/`](./docs/transform-api/).
+
+## Quick start (users)
+
+ImageShare is pre-launch. For now, build and install a debug build from source on an Android device or emulator, then share images into ImageShare to convert, optimize, strip metadata, and forward them to your destination app.
+
+## Integration (developers)
+
+```kotlin
+// Gradle (when published)
+implementation("com.imageshare:imageshare-api:<TBD>")
+```
+
+See [the integration guide](./docs/transform-api/integration-guide.md), [migration guide](./docs/transform-api/migration-guide.md), and [threat model](./docs/transform-api/threat-model.md).
+
+Two sample host apps are available in [`samples/`](./samples/):
+- `samples/minimal-host` — barebones URI demo
+- `samples/picker-host` — full user flow
+
+## Modules
+
+| Module | Purpose |
+|--------|---------|
+| `:app` | Main Android app |
+| `:core:io` | Storage + URI handling primitives |
+| `:core:processing` | Decode / resize / encode pipeline |
+| `:feature:preset` | Preset selection UI + smart-sharing chooser |
+| `:sdk:imageshare-api` | Public SDK wrapper for third-party hosts |
+| `:samples:minimal-host` | Minimal Transform API sample |
+| `:samples:picker-host` | Picker-driven Transform API sample |
+
+## Building
+
+```bash
+./gradlew :app:assembleDebug :app:testDebugUnitTest
+./gradlew :app:connectedDebugAndroidTest        # needs emulator
+./gradlew :sdk:imageshare-api:assembleDebug :sdk:imageshare-api:testDebugUnitTest
+```
+
+The native JPEG and AVIF prebuilts are skipped by default; the Kotlin-only fallback handles all current functionality.
+
+## Project status
+
+This repository is currently pre-launch scaffolding plus active Transform API work. APIs and UI may change before the first stable release.
 
 ## Android baseline
 
-- minSdk: 29
+- App minSdk: 29
+- SDK/sample minSdk: 26
 - targetSdk: 36
 - compileSdk: 36
 - Java toolchain: JDK 17
-- Permissions: no broad media permissions and no explicit `<uses-permission>` entries in the app manifest.
 
-Installed SDK note: this scaffold uses the highest stable installed platform found locally (`android-36`) and installed build tools are available through `37.0.0-rc1`; no SDK packages were installed during scaffolding.
+## Contributing
 
-## Build and test
+See [CONTRIBUTING.md](./CONTRIBUTING.md). All contributors must abide by our [Code of Conduct](./CODE_OF_CONDUCT.md).
 
-```powershell
-.\gradlew.bat --version
-.\gradlew.bat assembleDebug
-.\gradlew.bat testDebugUnitTest
-.\gradlew.bat lint
-.\gradlew.bat detekt
-```
+## Security
 
-The initial unit test setup uses JUnit 4 to keep the Android Gradle test pipeline simple for Phase 0.
+For vulnerability reports see [SECURITY.md](./SECURITY.md). Do **not** open public issues for security issues.
 
-## Launcher icon assets
+## License
 
-ImageShare ships a Material-style adaptive launcher icon (`mipmap-anydpi-v26`) with a geometric photo-card/share-arrow foreground on a solid blue background. The app supports Android 10+ (minSdk 29), so density-specific pre-API-26 PNG launcher fallbacks are intentionally not generated; generate `mipmap-mdpi` through `mipmap-xxxhdpi` PNGs from the vector source only if minSdk is lowered below 26.
+ImageShare is licensed under the [GNU General Public License v3.0](./LICENSE).
+
+Note: The SDK module (`:sdk:imageshare-api`) is also GPL v3; apps that embed it via Gradle become subject to GPL v3. Apps that interact with the Transform API directly via ContentProvider/Intent (no SDK linkage) are not affected by the SDK's license, since IPC is not "linking" under GPL.
+
+Copyright © 2024–2026 adsamcik.
