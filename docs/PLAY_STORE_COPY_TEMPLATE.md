@@ -46,7 +46,7 @@ Privacy-first by design:
 - No broad media-library permission.
 - Originals remain in their original location.
 - Processed copies are kept only in app-private cache until you save or share them.
-- Open source under the Apache-2.0 license.
+- Open source under the GNU GPL v3 license.
 
 Format support:
 

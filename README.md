@@ -61,7 +61,8 @@ This repository is currently pre-launch scaffolding plus active Transform API wo
 ## Android baseline
 
 - App minSdk: 29
-- SDK/sample minSdk: 26
+- SDK minSdk: 24
+- Sample-host minSdk: 26
 - targetSdk: 36
 - compileSdk: 36
 - Java toolchain: JDK 17

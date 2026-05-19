@@ -28,6 +28,7 @@ Pre-launch development. Ship date and v1.0.0 release notes finalized at ship tim
 
 ### Changed
 
+- **License relicensed from Apache 2.0 to GNU GPL v3** as part of open-source repo preparation. The previous Apache 2.0 LICENSE existed only during internal pre-launch development and was never published. SDK consumers (`:sdk:imageshare-api`) embedding via Gradle inherit GPL v3; apps interacting with the Transform API purely via ContentProvider IPC are not affected by the SDK license.
 - **Material 3 segmented buttons** for `ResizeMode` reduced from 4 to 3 (Original moved to a "Use original size" toggle above the segments) — fits 360 dp width without truncation, Hick's-Law reduction.
 - **Reset-to-preset-default** button now disabled when nothing has been changed (`!dirty && customOverride == null`).
 - **Recents `LazyRow`** correctly honors RTL locales via native `LayoutDirection` mirroring (an earlier attempt to force `reverseLayout = true` in RTL inverted the intended order; reverted).
@@ -86,7 +87,7 @@ These sections summarize foundation work done during pre-launch development. Fin
 ### Build characteristics
 
 - `minSdk = 29`, `compileSdk = 36`, Kotlin 2.2.21, Jetpack Compose, Material 3.
-- Apache 2.0 licensed.
+- GNU GPL v3 licensed (relicensed from Apache 2.0 prior to first public release; see `LICENSE`).
 - Release APK ~30.6 MB after R8 + resource shrinking (-23% vs debug).
 - Native libjpeg-turbo + libavif scaffolds present but disabled by default; activate by vendoring prebuilts and setting `imageshare.skipNativeJpegBuild=false` / `imageshare.skipNativeAvifBuild=false`.
 
