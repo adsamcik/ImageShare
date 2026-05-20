@@ -288,10 +288,16 @@ class TransformContentProvider : ContentProvider() {
     private fun validateFormatAvailable(params: TransformParams) {
         when (params.format) {
             EncodeFormat.HEIF -> if (!HeifAvailability.isWriteSupported()) {
-                throw TransformError.UnsupportedFormat("HEIF encoding is not available on this device")
+                throw TransformError.UnsupportedFormat(
+                    "HEIF output is unavailable because Android exposes no HEIF encoder on this device. " +
+                        "Use JPEG, PNG, or WebP instead.",
+                )
             }
             EncodeFormat.AVIF -> if (!AvifAvailability.isAnyWriteSupported()) {
-                throw TransformError.UnsupportedFormat("AVIF encoding is not available on this device")
+                throw TransformError.UnsupportedFormat(
+                    "AVIF output is unavailable because Android exposes no AVIF encoder on this device " +
+                        "and ImageShare's software AVIF path is not bundled in this build. Use JPEG, PNG, or WebP instead.",
+                )
             }
             EncodeFormat.JPEG,
             EncodeFormat.PNG,

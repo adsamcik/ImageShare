@@ -193,6 +193,29 @@ class TransformContentProviderTest {
         assertIsoBrand(bytes, setOf("avif", "avis", "mif1", "msf1"))
     }
 
+    @Test fun unavailableHeifExplainsDeviceEncoderRequirement() {
+        assumeTrue("Device under test has a HEIF encoder", !HeifAvailability.isWriteSupported())
+
+        val error = assertFileNotFound(transformUri(format = "heif"))
+
+        val message = error.message.orEmpty()
+        assertTrue(message.contains("UNSUPPORTED_FORMAT"))
+        assertTrue(message.contains("Android exposes no HEIF encoder"))
+        assertTrue(message.contains("Use JPEG, PNG, or WebP instead"))
+    }
+
+    @Test fun unavailableAvifExplainsSoftwarePathNotBundled() {
+        assumeTrue("Device under test has an AVIF encoder", !AvifAvailability.isAnyWriteSupported())
+
+        val error = assertFileNotFound(transformUri(format = "avif"))
+
+        val message = error.message.orEmpty()
+        assertTrue(message.contains("UNSUPPORTED_FORMAT"))
+        assertTrue(message.contains("Android exposes no AVIF encoder"))
+        assertTrue(message.contains("software AVIF path is not bundled"))
+        assertTrue(message.contains("Use JPEG, PNG, or WebP instead"))
+    }
+
     @Test fun stripallActuallyStripsExif() {
         val bytes = openBytes(transformUri(metadata = "stripall", source = exifJpegUri()))
 

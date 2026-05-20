@@ -3,6 +3,9 @@ package com.imageshare.sample.picker
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Intent
+import android.media.MediaCodecInfo
+import android.media.MediaCodecList
+import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -91,6 +94,7 @@ private fun PickerHostScreen(
     var resize by remember { mutableStateOf("longEdge2048") }
     var metadata by remember { mutableStateOf("stripall") }
     var targetBytes by remember { mutableStateOf("") }
+    val formatOptions = remember { outputFormatOptions() }
     val scope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         pickedUri = uri
@@ -123,7 +127,7 @@ private fun PickerHostScreen(
                     .height(220.dp),
             )
         }
-        OptionRow("Format", listOf("jpeg", "png", "webp", "heif", "avif"), format) { format = it }
+        FormatOptionRow("Format", formatOptions, format) { format = it }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = useAutoQuality, onCheckedChange = { useAutoQuality = it })
             Text("Use automatic quality (qauto)")
@@ -250,6 +254,44 @@ private fun OptionRow(
     }
 }
 
+@Composable
+private fun FormatOptionRow(
+    label: String,
+    options: List<FormatOption>,
+    selected: String,
+    onSelected: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, style = MaterialTheme.typography.titleMedium)
+        Text(
+            "JPEG, PNG, and WebP are always available. HEIF and AVIF are enabled only when this device exposes a compatible encoder.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { option ->
+                val labelText = if (option.available) option.label else "${option.label} unavailable"
+                if (option.token == selected) {
+                    Button(onClick = { onSelected(option.token) }, enabled = option.available) {
+                        Text(labelText)
+                    }
+                } else {
+                    OutlinedButton(onClick = { onSelected(option.token) }, enabled = option.available) {
+                        Text(labelText)
+                    }
+                }
+            }
+        }
+        options.filterNot { it.available }.forEach { option ->
+            Text(
+                "${option.label}: ${option.unavailableReason}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}
+
 private fun launchTransform(
     cacheDir: File,
     contentResolver: ContentResolver,
@@ -336,6 +378,43 @@ private fun mimeTypeFor(format: String): String = when (format) {
     else -> "application/octet-stream"
 }
 
+private data class FormatOption(
+    val token: String,
+    val label: String,
+    val available: Boolean,
+    val unavailableReason: String,
+)
+
+private fun outputFormatOptions(): List<FormatOption> = listOf(
+    FormatOption("jpeg", "JPEG", available = true, unavailableReason = ""),
+    FormatOption("png", "PNG", available = true, unavailableReason = ""),
+    FormatOption("webp", "WebP", available = true, unavailableReason = ""),
+    FormatOption(
+        token = "heif",
+        label = "HEIF",
+        available = hasHardwareEncoder("image/vnd.android.heic"),
+        unavailableReason = "requires a HEIF encoder; most emulators and some devices do not provide one.",
+    ),
+    FormatOption(
+        token = "avif",
+        label = "AVIF",
+        available = hasHardwareEncoder("image/avif"),
+        unavailableReason = "requires an AVIF encoder; ImageShare's software AVIF path is not bundled in this build.",
+    ),
+)
+
+private fun hasHardwareEncoder(mimeType: String): Boolean = try {
+    val format = MediaFormat.createVideoFormat(mimeType, FORMAT_PROBE_WIDTH, FORMAT_PROBE_HEIGHT).apply {
+        setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
+        setInteger(MediaFormat.KEY_BIT_RATE, FORMAT_PROBE_BIT_RATE)
+        setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, FORMAT_PROBE_I_FRAME_INTERVAL)
+        setInteger(MediaFormat.KEY_FRAME_RATE, FORMAT_PROBE_FRAME_RATE)
+    }
+    MediaCodecList(MediaCodecList.REGULAR_CODECS).findEncoderForFormat(format) != null
+} catch (_: Throwable) {
+    false
+}
+
 private fun friendlyTransformMessage(error: FileNotFoundException): String {
     val message = error.message.orEmpty()
     val typed = message.substringAfter("ImageShareTransform:", missingDelimiterValue = "").trim()
@@ -347,7 +426,10 @@ private fun friendlyTransformMessage(error: FileNotFoundException): String {
     return when (code) {
         "GRANT_LOST" -> "ImageShare lost access to the source image. Pick it again and retry."
         "MISSING_SOURCE" -> "The transform URI is missing its source image."
-        "UNSUPPORTED_FORMAT" -> "ImageShare does not support the selected output format."
+        "UNSUPPORTED_FORMAT" -> {
+            val reason = detail.ifBlank { "the selected output format is unavailable on this device" }
+            "ImageShare cannot create that output here: $reason"
+        }
         "RATE_LIMIT" -> "ImageShare is rate limiting this host. Wait a moment and retry."
         "SYSTEM_BUSY" -> "ImageShare is busy. Try again shortly."
         "PIXEL_BUDGET_EXCEEDED" -> "The source image is too large for ImageShare to transform."
@@ -355,3 +437,9 @@ private fun friendlyTransformMessage(error: FileNotFoundException): String {
         else -> "ImageShare transform failed: ${detail.ifBlank { code }}"
     }
 }
+
+private const val FORMAT_PROBE_WIDTH = 640
+private const val FORMAT_PROBE_HEIGHT = 480
+private const val FORMAT_PROBE_BIT_RATE = 1_000_000
+private const val FORMAT_PROBE_I_FRAME_INTERVAL = 1
+private const val FORMAT_PROBE_FRAME_RATE = 30

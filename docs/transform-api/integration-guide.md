@@ -78,7 +78,15 @@ The stable v1 schema is:
 content://com.imageshare.app.transform/v1/{format}/{quality}/{resize}/{metadata}?source={encoded-content-uri}
 ```
 
-`format` supports `jpeg`, `png`, `webp`, `webplossless`, `heif`, and `avif`. Device codec availability can still reject `heif` or `avif`.
+`format` supports `jpeg`, `png`, `webp`, `webplossless`, `heif`, and `avif`.
+
+Format availability is intentionally explicit:
+
+- `jpeg`, `png`, `webp`, and `webplossless` are always available through Android's built-in software encoders.
+- `heif` requires Android to expose a HEIF encoder through `MediaCodec`. Many physical devices support this; most emulators do not.
+- `avif` requires Android to expose an AVIF encoder through `MediaCodec`, or an ImageShare build that bundles the optional native libavif software path. The public pre-launch build does not bundle software AVIF yet.
+
+If a requested codec is unavailable, the provider returns `UNSUPPORTED_FORMAT` with a human-readable reason. Hosts should fall back to JPEG, PNG, or WebP.
 
 `quality` supports `q1` through `q100`, or `qauto` when `targetBytes=N` is also present. `qauto` asks ImageShare to search for an output near the target byte count.
 
@@ -111,7 +119,7 @@ Provider failures are surfaced as `FileNotFoundException` messages with the pref
 | `MISSING_SOURCE` | No valid `source` query parameter | Rebuild the URI with a `content://` source |
 | `MALFORMED_URI` | Bad token, invalid range, invalid cross-field combination, or self-reference | Fix request construction |
 | `UNSUPPORTED_VERSION` | Installed ImageShare does not serve that path version | Use `/v1/` or disable the feature |
-| `UNSUPPORTED_FORMAT` | Codec unavailable on this device | Fall back to JPEG, PNG, or WebP |
+| `UNSUPPORTED_FORMAT` | Codec unavailable on this device; common for HEIF/AVIF on emulators or devices without encoders | Show the reason and fall back to JPEG, PNG, or WebP |
 | `GRANT_LOST` | Source read grant missing or revoked | Re-grant and retry after user repicks if needed |
 | `RATE_LIMIT` | Per-UID rate limit exceeded | Back off and retry later |
 | `SYSTEM_BUSY` | Provider concurrency cap reached | Retry with jitter |

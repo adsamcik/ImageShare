@@ -95,10 +95,12 @@ class Encoder {
                     )
                 }
                 recycleIfNeeded(bitmapToEncode, originalBitmap)
-                throw EncodeError.AvifUnavailable("Native AVIF encode failed")
+                throw EncodeError.AvifUnavailable("Software AVIF encode failed; fall back to JPEG, PNG, or WebP.")
             }
             recycleIfNeeded(bitmapToEncode, originalBitmap)
-            throw EncodeError.AvifUnavailable("No AVIF encoder available on this device")
+            throw EncodeError.AvifUnavailable(
+                "AVIF output is unavailable because this device has no AVIF encoder and software AVIF is not bundled.",
+            )
         }
 
         try {

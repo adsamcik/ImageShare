@@ -159,7 +159,10 @@ private fun friendlyTransformMessage(error: FileNotFoundException): String {
     return when (code) {
         "GRANT_LOST" -> "ImageShare lost access to the source image. Pick it again and retry."
         "MISSING_SOURCE" -> "The transform URI is missing its source image."
-        "UNSUPPORTED_FORMAT" -> "ImageShare does not support the selected output format."
+        "UNSUPPORTED_FORMAT" -> {
+            val reason = detail.ifBlank { "the selected output format is unavailable on this device" }
+            "ImageShare cannot create that output here: $reason"
+        }
         "RATE_LIMIT" -> "ImageShare is rate limiting this host. Wait a moment and retry."
         "SYSTEM_BUSY" -> "ImageShare is busy. Try again shortly."
         "PIXEL_BUDGET_EXCEEDED" -> "The source image is too large for ImageShare to transform."
