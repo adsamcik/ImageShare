@@ -1,15 +1,21 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <permission
         android:name="com.imageshare.app.permission.TRANSFORM_PRO"
         android:protectionLevel="signature" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SHORT_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Required for the in-app chooser to discover image-sharing targets on Android 11+. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="image/*" />
+        </intent>
+    </queries>
 
+    <!-- Backup is restricted by the referenced include-only rules to the default preset. -->
     <application
         android:name=".ImageShareApp"
         android:icon="@mipmap/ic_launcher"
@@ -54,9 +60,7 @@
             android:grantUriPermissions="true" />
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
-            android:foregroundServiceType="dataSync|shortService"
-            tools:replace="android:foregroundServiceType"
-            tools:node="merge" />
+            android:foregroundServiceType="mediaProcessing" />
     </application>
 
 </manifest>

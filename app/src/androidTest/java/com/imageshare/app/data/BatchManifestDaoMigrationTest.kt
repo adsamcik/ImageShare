@@ -5,6 +5,7 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -44,6 +45,10 @@ class BatchManifestDaoMigrationTest {
         db.query("PRAGMA table_info(`batch_manifest`)").use { cursor ->
             val nameIndex = cursor.getColumnIndexOrThrow("name")
             while (cursor.moveToNext()) columns += cursor.getString(nameIndex)
+        }
+        db.query("SELECT `errorCode` FROM `batch_manifest` WHERE `jobId` = 'job' AND `sourceIndex` = 0").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertNull(cursor.getString(cursor.getColumnIndexOrThrow("errorCode")))
         }
         db.close()
 

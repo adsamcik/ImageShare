@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,25 @@ plugins {
     alias(libs.plugins.baselineprofile)
     alias(libs.plugins.ksp)
 }
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.isFile) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun releaseSigningValue(name: String): String? =
+    System.getenv(name)?.takeIf(String::isNotBlank)
+        ?: localProperties.getProperty(name)?.takeIf(String::isNotBlank)
+
+val releaseSigningValues = mapOf(
+    "IMAGESHARE_KEYSTORE_PATH" to releaseSigningValue("IMAGESHARE_KEYSTORE_PATH"),
+    "IMAGESHARE_KEYSTORE_PASSWORD" to releaseSigningValue("IMAGESHARE_KEYSTORE_PASSWORD"),
+    "IMAGESHARE_KEY_ALIAS" to releaseSigningValue("IMAGESHARE_KEY_ALIAS"),
+    "IMAGESHARE_KEY_PASSWORD" to releaseSigningValue("IMAGESHARE_KEY_PASSWORD"),
+)
+val releaseSigningConfigured = releaseSigningValues.values.all { it != null }
 
 android {
     namespace = "com.imageshare.app"
@@ -15,7 +36,7 @@ android {
         minSdk = 29
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "TRANSFORM_API_ENABLED", "true")
@@ -24,6 +45,17 @@ android {
         buildConfigField("int", "TRANSFORM_MAX_CONCURRENT_PROCESS_WIDE", "8")
         buildConfigField("long", "TRANSFORM_MAX_PIXELS", "200_000_000L")
         buildConfigField("long", "TRANSFORM_MAX_TARGET_BYTES", "100L * 1024L * 1024L")
+    }
+
+    signingConfigs {
+        create("release") {
+            if (releaseSigningConfigured) {
+                storeFile = rootProject.file(checkNotNull(releaseSigningValues["IMAGESHARE_KEYSTORE_PATH"]))
+                storePassword = releaseSigningValues["IMAGESHARE_KEYSTORE_PASSWORD"]
+                keyAlias = releaseSigningValues["IMAGESHARE_KEY_ALIAS"]
+                keyPassword = releaseSigningValues["IMAGESHARE_KEY_PASSWORD"]
+            }
+        }
     }
 
     compileOptions {
@@ -36,7 +68,11 @@ android {
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -69,6 +105,29 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+val validateReleaseSigning by tasks.registering {
+    group = "verification"
+    description = "Fails unless all credentials required for a Play release bundle are configured."
+
+    doLast {
+        val missing = releaseSigningValues.filterValues { it == null }.keys
+        check(missing.isEmpty()) {
+            "Release signing is not configured. Missing: ${missing.sorted().joinToString()}. " +
+                "See docs/RELEASE_SIGNING_SETUP.md."
+        }
+        val keystoreFile = rootProject.file(checkNotNull(releaseSigningValues["IMAGESHARE_KEYSTORE_PATH"]))
+        check(keystoreFile.isFile) {
+            "Release keystore does not exist or is not a file: ${keystoreFile.absolutePath}"
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == "bundleRelease") {
+        dependsOn(validateReleaseSigning)
     }
 }
 

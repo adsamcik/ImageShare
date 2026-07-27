@@ -1,4 +1,5 @@
 @file:Suppress("TooManyFunctions", "ReturnCount", "TooGenericExceptionCaught", "InstanceOfCheckForException")
+@file:android.annotation.SuppressLint("InlinedApi")
 
 package com.imageshare.app.work
 
@@ -58,7 +59,7 @@ class BatchProcessWorker(
                 markPendingCancelled(jobId)
             }
             throw error
-        } catch (_: Throwable) {
+        } catch (_: Exception) {
             Result.failure()
         }
     }
@@ -121,7 +122,7 @@ class BatchProcessWorker(
         withContext(NonCancellable) {
             try {
                 block()
-            } catch (error: Throwable) {
+            } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 Log.w(TAG, "Unable to $description", error)
             }
@@ -160,14 +161,7 @@ class BatchProcessWorker(
         )
     }
 
-    private fun foregroundServiceType(): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // v1.0 batches are expected to finish well under the short-service limit; longer-batch
-            // estimation can switch back to DATA_SYNC once we have real duration telemetry.
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE
-        } else {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        }
+    private fun foregroundServiceType(): Int = foregroundServiceTypeForBatch()
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -201,6 +195,19 @@ class BatchProcessWorker(
         const val STATE_CANCELLED = "Cancelled"
 
         fun uniqueWorkName(jobId: String): String = "batch_$jobId"
+
+        /**
+         * A batch has no hard execution-time bound: a single user image can take more than the
+         * approximately three minutes allowed for [ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE].
+         * Image conversion is media processing, so use the dedicated service type instead of
+         * claiming the short-service type.
+         *
+         * On Android 15+, mediaProcessing is subject to the platform cumulative six-hour-per-24-hour
+         * background budget. Batch work is started from the user-initiated processing flow, rather
+         * than from a boot/background trigger, so returning the app to the foreground resets that budget.
+         */
+        internal fun foregroundServiceTypeForBatch(): Int =
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
     }
 }
 

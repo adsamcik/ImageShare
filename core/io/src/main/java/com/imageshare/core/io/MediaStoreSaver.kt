@@ -48,22 +48,31 @@ class MediaStoreSaver(private val resolver: ContentResolver) {
             }
             val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                 ?: throw SaveError.InsertFailed(safeDisplayName)
+            var published = false
             try {
                 resolver.openOutputStream(uri)?.use { output ->
                     sourceFile.inputStream().use { input ->
                         input.copyTo(output, BUFFER_SIZE_BYTES)
                     }
                 } ?: throw IOException("Unable to open MediaStore output stream")
-                resolver.update(
+                val updatedRows = resolver.update(
                     uri,
                     ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) },
                     null,
                     null,
                 )
+                if (updatedRows <= 0) {
+                    throw IOException("Unable to publish MediaStore item")
+                }
+                published = true
                 SavedItem(sourceFile, uri, safeDisplayName, sourceFile.length())
             } catch (error: IOException) {
-                runCatching { resolver.delete(uri, null, null) }
                 throw SaveError.CopyFailed(error)
+            } finally {
+                if (!published) {
+                    // Any failure after insert leaves an IS_PENDING row behind unless it is removed.
+                    runCatching { resolver.delete(uri, null, null) }
+                }
             }
         }
 

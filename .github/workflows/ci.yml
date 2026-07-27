@@ -43,10 +43,10 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Assemble + unit tests
-        run: ./gradlew --no-daemon --console=plain "-Pimageshare.skipNativeJpegBuild=true" "-Pimageshare.skipNativeAvifBuild=true" :app:assembleDebug :app:testDebugUnitTest :sdk:imageshare-api:assembleDebug :sdk:imageshare-api:testDebugUnitTest :samples:minimal-host:assembleDebug :samples:picker-host:assembleDebug
+        run: ./gradlew --no-daemon --console=plain "-Pimageshare.skipNativeJpegBuild=true" "-Pimageshare.skipNativeAvifBuild=true" :app:assembleDebug :app:assembleRelease :app:testDebugUnitTest :sdk:imageshare-api:assembleDebug :sdk:imageshare-api:testDebugUnitTest :samples:minimal-host:assembleDebug :samples:picker-host:assembleDebug
 
       - name: Lint
-        run: ./gradlew --no-daemon --console=plain "-Pimageshare.skipNativeJpegBuild=true" "-Pimageshare.skipNativeAvifBuild=true" :app:lintDebug :sdk:imageshare-api:lintDebug
+        run: ./gradlew --no-daemon --console=plain "-Pimageshare.skipNativeJpegBuild=true" "-Pimageshare.skipNativeAvifBuild=true" :app:lintRelease :sdk:imageshare-api:lintDebug
 
       - name: Upload test reports
         if: always()
@@ -56,7 +56,7 @@ jobs:
           path: |
             app/build/reports/tests/
             sdk/imageshare-api/build/reports/tests/
-            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-release.html
             sdk/imageshare-api/build/reports/lint-results-debug.html
           retention-days: 14
           if-no-files-found: ignore

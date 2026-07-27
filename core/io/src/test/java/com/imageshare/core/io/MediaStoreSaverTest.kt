@@ -78,13 +78,31 @@ class MediaStoreSaverTest {
         val source = sourceFile("copy-failure", byteArrayOf(8, 9))
         val id = 103
         val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toLong())
-        shadowOf(resolver).setNextDatabaseIdForInserts(id)
-        shadowOf(resolver).registerOutputStream(uri, ThrowingOutputStream())
+        val shadowResolver = shadowOf(resolver)
+        val deleteCountBefore = shadowResolver.deleteStatements.size
+        shadowResolver.setNextDatabaseIdForInserts(id)
+        shadowResolver.registerOutputStream(uri, ThrowingOutputStream())
 
         val failure = runCatching { saver.save(source, "broken.jpg", "image/jpeg") }.exceptionOrNull()
 
         assertTrue(failure is MediaStoreSaver.SaveError.CopyFailed)
-        assertTrue(shadowOf(resolver).deleteStatements.isNotEmpty())
+        assertEquals(deleteCountBefore + 1, shadowResolver.deleteStatements.size)
+    }
+
+    @Test
+    fun saveDeletesOrphanRowOnRuntimeCopyFailure() = runBlocking {
+        val source = sourceFile("runtime-copy-failure", byteArrayOf(8, 9))
+        val id = 104
+        val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toLong())
+        val shadowResolver = shadowOf(resolver)
+        val deleteCountBefore = shadowResolver.deleteStatements.size
+        shadowResolver.setNextDatabaseIdForInserts(id)
+        shadowResolver.registerOutputStream(uri, RuntimeThrowingOutputStream())
+
+        val failure = runCatching { saver.save(source, "runtime-broken.jpg", "image/jpeg") }.exceptionOrNull()
+
+        assertNotNull(failure)
+        assertEquals(deleteCountBefore + 1, shadowResolver.deleteStatements.size)
     }
 
     private fun sourceFile(name: String, bytes: ByteArray): File =
@@ -110,6 +128,12 @@ class MediaStoreSaverTest {
     private class ThrowingOutputStream : OutputStream() {
         override fun write(b: Int) {
             throw IOException("copy failed")
+        }
+    }
+
+    private class RuntimeThrowingOutputStream : OutputStream() {
+        override fun write(b: Int) {
+            throw SecurityException("copy denied")
         }
     }
 }

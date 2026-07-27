@@ -80,7 +80,8 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun Intent?.extractImageShareUris(): List<Uri> {
+@VisibleForTesting
+internal fun Intent?.extractImageShareUris(): List<Uri> {
     if (this == null) return emptyList()
 
     return when (action) {
@@ -91,20 +92,32 @@ private fun Intent?.extractImageShareUris(): List<Uri> {
 }
 
 private fun Intent.getParcelableExtraCompat(name: String): Uri? =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        getParcelableExtra(name, Uri::class.java)
-    } else {
-        @Suppress("DEPRECATION")
-        getParcelableExtra(name) as? Uri
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(name, Uri::class.java)
+        } else {
+            // EXTRA_STREAM is controlled by another app. Read the raw Parcelable first so a
+            // mismatched type is rejected by this safe cast instead of the generic framework API.
+            @Suppress("DEPRECATION")
+            getParcelableExtra<android.os.Parcelable>(name) as? Uri
+        }
+    } catch (_: RuntimeException) {
+        // A malformed Parcelable can also fail while Bundle unparcels it. Treat it as no input.
+        null
     }
 
 private fun Intent.getParcelableArrayListExtraCompat(name: String): ArrayList<Uri>? =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        getParcelableArrayListExtra(name, Uri::class.java)
-    } else {
-        @Suppress("DEPRECATION", "UNCHECKED_CAST")
-        val raw = getParcelableArrayListExtra<android.os.Parcelable>(name) ?: return null
-        raw.filterIsInstance<Uri>().let { if (it.isEmpty()) null else ArrayList(it) }
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableArrayListExtra(name, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            val raw = getParcelableArrayListExtra<android.os.Parcelable>(name) ?: return null
+            raw.filterIsInstance<Uri>().let { if (it.isEmpty()) null else ArrayList(it) }
+        }
+    } catch (_: RuntimeException) {
+        // As above, tolerate malformed or type-confused untrusted extras.
+        null
     }
 
 private const val SHARE_RANDOM_BOUND = 10_000

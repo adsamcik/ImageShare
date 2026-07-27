@@ -1,12 +1,14 @@
 package com.imageshare.app.work
 
 import android.content.Context
+import android.content.pm.ServiceInfo
 import androidx.room.Room
 import androidx.work.Configuration
 import androidx.work.Data
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.imageshare.app.AppContainer
+import com.imageshare.app.data.BatchItemError
 import com.imageshare.app.data.BatchManifestDao
 import com.imageshare.app.data.BatchManifestEntity
 import com.imageshare.app.data.ImageShareDatabase
@@ -24,7 +26,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -60,6 +64,14 @@ class BatchProcessWorkerTest {
     fun tearDown() {
         AppContainer.overrideForTests()
         database.close()
+    }
+
+    @Test
+    fun unboundedBatchForegroundServiceUsesMediaProcessing() {
+        assertEquals(
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING,
+            BatchProcessWorker.foregroundServiceTypeForBatch(),
+        )
     }
 
     @Test
@@ -136,8 +148,9 @@ class BatchProcessWorkerTest {
     fun cancellationMidBatchPersistsFinalProgressAndCancelledStateUnderNonCancellable() = runTest {
         seedManifest()
         val item1Started = CompletableDeferred<Unit>()
+        val cancellationAwareDao = CancellationAwareBatchManifestDao(database.batchManifestDao())
         AppContainer.overrideForTests(
-            batchManifestDao = database.batchManifestDao(),
+            batchManifestDao = cancellationAwareDao,
             batchOrchestrator = BatchOrchestrator(
                 FakePipeline(context) { source, preset, jobId ->
                     when (source.uri.lastPathSegment) {
@@ -168,6 +181,39 @@ class BatchProcessWorkerTest {
         assertTrue(rows[0].storedFilePath != null)
         assertEquals(BatchProcessWorker.STATE_CANCELLED, rows[1].state)
         assertEquals(BatchProcessWorker.STATE_CANCELLED, rows[2].state)
+        assertEquals(listOf(true, true), cancellationAwareDao.cancelledUpdateContexts)
+    }
+
+    @Test
+    fun itemFailurePersistsOnlyAllowlistedErrorCode() = runTest {
+        seedManifest()
+        val sensitiveMessage = "content://other.app/private/album/secret.jpg"
+        AppContainer.overrideForTests(
+            batchManifestDao = database.batchManifestDao(),
+            batchOrchestrator = BatchOrchestrator(
+                FakePipeline(context) { source, preset, jobId ->
+                    if (source.uri.lastPathSegment == "0") {
+                        PresetPipeline.Result.Failure(
+                            before = source,
+                            cause = IllegalStateException(sensitiveMessage),
+                            step = PresetPipeline.Step.Encoding,
+                        )
+                    } else {
+                        success(context, source, preset, jobId)
+                    }
+                },
+                StandardTestDispatcher(testScheduler),
+            ),
+            presetRepository = WorkerPresetRepository,
+        )
+
+        val result = worker().doWork()
+
+        assertEquals(androidx.work.ListenableWorker.Result.success(), result)
+        val failedRow = database.batchManifestDao().forJob(JOB_ID).first()
+        assertEquals(BatchProcessWorker.STATE_FAILED, failedRow.state)
+        assertEquals(BatchItemError.Encode.name, failedRow.errorCode)
+        assertTrue(failedRow.toString().contains(sensitiveMessage).not())
     }
 
     @Test
@@ -286,4 +332,17 @@ private class CountingBatchManifestDao(
     override suspend fun deleteJob(jobId: String) = delegate.deleteJob(jobId)
 
     override suspend fun purgeOlderThan(cutoffMillis: Long): Int = delegate.purgeOlderThan(cutoffMillis)
+}
+
+private class CancellationAwareBatchManifestDao(
+    private val delegate: BatchManifestDao,
+) : BatchManifestDao by delegate {
+    val cancelledUpdateContexts = mutableListOf<Boolean>()
+
+    override suspend fun update(entry: BatchManifestEntity) {
+        if (entry.state == BatchProcessWorker.STATE_CANCELLED) {
+            cancelledUpdateContexts += currentCoroutineContext().isActive
+        }
+        delegate.update(entry)
+    }
 }

@@ -92,6 +92,8 @@ class MetadataApplierTest {
     @Test
     fun pngPreserveModesPassThroughUnchanged() = runBlocking {
         val input = bitmapBytes(Bitmap.CompressFormat.PNG)
+            .injectPngChunk("tEXt", "GPS\u000051.5N 0.1W".encodeToByteArray())
+            .injectPngChunk("eXIf", "Exif\u0000\u0000sensitive".encodeToByteArray())
 
         listOf(MetadataMode.PreserveSafe, MetadataMode.PreserveAll).forEach { mode ->
             val result = applier.apply(input, EncodeFormat.PNG, mode)
@@ -100,19 +102,52 @@ class MetadataApplierTest {
     }
 
     @Test
-    fun pngStripAllRemovesTextAndExifChunks() = runBlocking {
+    fun pngStripAllRemovesPrivacyMetadataChunks() = runBlocking {
         val input = bitmapBytes(Bitmap.CompressFormat.PNG)
             .injectPngChunk("tEXt", "GPS\u000051.5N 0.1W".encodeToByteArray())
+            .injectPngChunk("zTXt", "Comment\u0000compressed-sensitive".encodeToByteArray())
+            .injectPngChunk("iTXt", "XML:com.adobe.xmp\u0000sensitive".encodeToByteArray())
             .injectPngChunk("eXIf", "Exif\u0000\u0000sensitive".encodeToByteArray())
+            .injectPngChunk("tIME", byteArrayOf(0x07, 0xE8.toByte(), 0x01, 0x01, 0, 0, 0))
 
         val result = applier.apply(input, EncodeFormat.PNG, MetadataMode.StripAll, MetadataSource.NONE)
         val chunks = result.pngChunkTypes()
 
         assertFalse(chunks.contains("tEXt"))
+        assertFalse(chunks.contains("zTXt"))
+        assertFalse(chunks.contains("iTXt"))
         assertFalse(chunks.contains("eXIf"))
+        assertFalse(chunks.contains("tIME"))
         assertTrue(chunks.contains("IHDR"))
         assertTrue(chunks.contains("IDAT"))
         assertTrue(chunks.contains("IEND"))
+    }
+
+    @Test
+    fun pngStripAllPreservesNonMetadataAndUnknownCriticalChunks() = runBlocking {
+        val input = bitmapBytes(Bitmap.CompressFormat.PNG)
+            .injectPngChunk("pHYs", byteArrayOf(0, 0, 0, 1, 0, 0, 0, 1, 1))
+            // Unknown critical chunks must not be silently removed by the metadata filter.
+            .injectPngChunk("ABCD", byteArrayOf(1, 2, 3))
+
+        val result = applier.apply(input, EncodeFormat.PNG, MetadataMode.StripAll, MetadataSource.NONE)
+        val chunks = result.pngChunkTypes()
+
+        assertTrue(chunks.contains("pHYs"))
+        assertTrue(chunks.contains("ABCD"))
+    }
+
+    @Test
+    fun pngStripAllLeavesMalformedInputsUnchanged() = runBlocking {
+        val valid = bitmapBytes(Bitmap.CompressFormat.PNG)
+            .injectPngChunk("tEXt", "GPS\u000051.5N 0.1W".encodeToByteArray())
+        val truncated = valid.copyOfRange(0, valid.size - 1)
+        val oversizedLength = valid.withPngChunkLength("IDAT", Int.MAX_VALUE)
+
+        listOf(truncated, oversizedLength).forEach { input ->
+            val result = applier.apply(input, EncodeFormat.PNG, MetadataMode.StripAll, MetadataSource.NONE)
+            assertTrue(result.contentEquals(input))
+        }
     }
 
     @Ignore("Robolectric does not consistently support WebP EXIF writing; covered by instrumented test.")
@@ -199,6 +234,9 @@ class MetadataApplierTest {
         return output.toByteArray()
     }
 
+    private fun ByteArray.withPngChunkLength(chunkType: String, length: Int): ByteArray =
+        copyOf().also { output -> output.writePngInt(chunkOffset(chunkType), length) }
+
     private fun ByteArray.pngChunkTypes(): List<String> {
         val chunks = mutableListOf<String>()
         var offset = PNG_SIGNATURE_SIZE
@@ -237,6 +275,13 @@ class MetadataApplierTest {
         write((value ushr PNG_BYTE_2_SHIFT) and BYTE_MASK)
         write((value ushr PNG_BYTE_1_SHIFT) and BYTE_MASK)
         write(value and BYTE_MASK)
+    }
+
+    private fun ByteArray.writePngInt(offset: Int, value: Int) {
+        this[offset] = ((value ushr PNG_BYTE_3_SHIFT) and BYTE_MASK).toByte()
+        this[offset + 1] = ((value ushr PNG_BYTE_2_SHIFT) and BYTE_MASK).toByte()
+        this[offset + 2] = ((value ushr PNG_BYTE_1_SHIFT) and BYTE_MASK).toByte()
+        this[offset + 3] = (value and BYTE_MASK).toByte()
     }
 
     private fun crc(type: ByteArray, data: ByteArray): Int {
