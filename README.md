@@ -53,6 +53,7 @@ Two sample host apps are available in [`samples/`](./samples/):
 ```
 
 For a signed Google Play bundle, configure the upload key as described in [`docs/RELEASE_SIGNING_SETUP.md`](./docs/RELEASE_SIGNING_SETUP.md), then run `./gradlew :app:bundleRelease`.
+Google Play publication is always manual: CI can build a signed AAB artifact, but it never uploads or rolls out a Play release.
 
 The native JPEG and AVIF prebuilts are skipped by default; the Kotlin-only fallback handles all current functionality.
 

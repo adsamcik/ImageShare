@@ -1,4 +1,7 @@
-name: Play release bundle
+# Manual artifact builder only. This workflow has no Google Play credentials and cannot publish.
+name: Build Play bundle (manual)
+
+run-name: Manual Play bundle by @${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -55,7 +58,7 @@ jobs:
           jarsigner -verify -verbose -certs app/build/outputs/bundle/release/app-release.aab
           sha256sum app/build/outputs/bundle/release/app-release.aab > app/build/outputs/bundle/release/app-release.aab.sha256
 
-      - name: Upload Play bundle
+      - name: Store bundle as GitHub artifact for manual Play upload
         uses: actions/upload-artifact@v4
         with:
           name: imageshare-play-v1.0.0-${{ github.run_number }}

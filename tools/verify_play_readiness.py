@@ -109,6 +109,24 @@ if "<ACCOUNT REQUIRED: insert the monitored Play support email>" in store_listin
 if "verify after enabling GitHub Pages" in store_listing:
     external_actions.append("Enable GitHub Pages and verify the public privacy-policy URL returns HTTP 200")
 
+release_workflow = read(".github/workflows/play-release.yml")
+check("workflow_dispatch:" in release_workflow, "Play bundle workflow must be manually dispatched")
+for automated_trigger in ("push:", "pull_request:", "schedule:", "release:"):
+    check(
+        f"\n  {automated_trigger}" not in release_workflow,
+        f"Play bundle workflow must not use automatic trigger: {automated_trigger}",
+    )
+for forbidden in (
+    "upload-google-play",
+    "gradle-play-publisher",
+    "fastlane supply",
+    "serviceAccountJson",
+):
+    check(
+        forbidden not in release_workflow,
+        f"Play bundle workflow contains automatic publishing integration: {forbidden}",
+    )
+
 if failures:
     print("Play readiness: FAIL")
     for failure in failures:

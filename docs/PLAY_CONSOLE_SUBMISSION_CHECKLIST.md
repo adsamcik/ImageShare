@@ -67,6 +67,10 @@ Recommended rollout path:
 
 ## 6. Upload signed app bundle
 
+**Publication policy:** every ImageShare Google Play release is uploaded, reviewed, and
+rolled out manually in Play Console. The GitHub Actions workflow only builds and stores a
+signed AAB as a GitHub artifact; it has no Play publishing credentials or deployment step.
+
 Prefer Android App Bundle (`.aab`) over APK for Play Store distribution:
 
 ```powershell
@@ -74,6 +78,9 @@ Prefer Android App Bundle (`.aab`) over APK for Play Store distribution:
 ```
 
 Use `docs/RELEASE_SIGNING_SETUP.md` before building. Enroll in Play App Signing during first upload so Google signs distributed artifacts with managed keys.
+
+Alternatively, manually run **Build Play bundle (manual)** in GitHub Actions, download its
+artifact, verify the included SHA-256 checksum, and upload the AAB in Play Console yourself.
 
 ## 7. Release rollout
 

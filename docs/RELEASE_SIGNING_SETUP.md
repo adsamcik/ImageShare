@@ -77,7 +77,7 @@ IMAGESHARE_KEY_ALIAS
 IMAGESHARE_KEY_PASSWORD
 ```
 
-Encode the keystore without line wrapping and store the output as `IMAGESHARE_KEYSTORE_BASE64`. The manual **Play release bundle** workflow decodes it only into the runner's temporary directory, verifies the AAB signature, records a SHA-256 checksum, and removes the temporary key.
+Encode the keystore without line wrapping and store the output as `IMAGESHARE_KEYSTORE_BASE64`. The manual **Build Play bundle (manual)** workflow decodes it only into the runner's temporary directory, verifies the AAB signature, records a SHA-256 checksum, and removes the temporary key. It stores the bundle only as a GitHub Actions artifact; a maintainer must upload and release it manually in Play Console.
 
 ## 4. Verify
 
