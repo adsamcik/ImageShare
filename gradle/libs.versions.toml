@@ -67,4 +67,4 @@ detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 benchmark = { id = "androidx.benchmark", version.ref = "benchmark" }
 android-test = { id = "com.android.test", version.ref = "agp" }
 baselineprofile = { id = "androidx.baselineprofile", version.ref = "benchmark" }
-ksp = { id = "com.google.devtools.ksp", version = "2.2.21-2.0.4" }
+ksp = { id = "com.google.devtools.ksp", version = "2.3.8" }
