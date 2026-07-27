@@ -1,6 +1,6 @@
 # Release Signing Setup — ImageShare
 
-Use this template to create the Android release keystore and wire it into Gradle without committing secrets.
+Use this template to create the Android release keystore and wire it into Gradle without committing secrets. The same key signs APKs published through GitHub Releases and AABs built for a separately managed Google Play upload.
 
 ## 1. Generate keystore
 
@@ -77,7 +77,11 @@ IMAGESHARE_KEY_ALIAS
 IMAGESHARE_KEY_PASSWORD
 ```
 
-Encode the keystore without line wrapping and store the output as `IMAGESHARE_KEYSTORE_BASE64`. The manual **Build Play bundle (manual)** workflow decodes it only into the runner's temporary directory, verifies the AAB signature, records a SHA-256 checksum, and removes the temporary key. It stores the bundle only as a GitHub Actions artifact; a maintainer must upload and release it manually in Play Console.
+Encode the keystore without line wrapping and store the output as `IMAGESHARE_KEYSTORE_BASE64`.
+
+The **Publish GitHub release** workflow decodes it only into the runner's temporary directory, verifies the signed APK with `apksigner`, publishes the APK and its SHA-256 checksum on the GitHub Release, and removes the temporary key. It has no Google Play credentials and cannot upload or roll out a Play release.
+
+The manual **Build Play bundle (manual)** workflow uses the same secrets to verify and build an AAB artifact. A maintainer must upload and release that bundle manually in Play Console.
 
 ## 4. Verify
 

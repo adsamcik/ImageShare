@@ -17,7 +17,7 @@
 
 ## Quick start (users)
 
-ImageShare is pre-launch. For now, build and install a debug build from source on an Android device or emulator, then share images into ImageShare to convert, optimize, strip metadata, and forward them to your destination app.
+Download the signed APK from the latest [GitHub Release](https://github.com/adsamcik/ImageShare/releases), install it on an Android device, then share images into ImageShare to convert, optimize, strip metadata, and forward them to your destination app.
 
 ## Integration (developers)
 
@@ -52,14 +52,14 @@ Two sample host apps are available in [`samples/`](./samples/):
 ./gradlew :sdk:imageshare-api:assembleDebug :sdk:imageshare-api:testDebugUnitTest
 ```
 
-For a signed Google Play bundle, configure the upload key as described in [`docs/RELEASE_SIGNING_SETUP.md`](./docs/RELEASE_SIGNING_SETUP.md), then run `./gradlew :app:bundleRelease`.
+GitHub releases build a signed APK from repository secrets. For a separately managed Google Play bundle, configure the upload key as described in [`docs/RELEASE_SIGNING_SETUP.md`](./docs/RELEASE_SIGNING_SETUP.md), then run `./gradlew :app:bundleRelease`.
 Google Play publication is always manual: CI can build a signed AAB artifact, but it never uploads or rolls out a Play release.
 
 The native JPEG and AVIF prebuilts are skipped by default; the Kotlin-only fallback handles all current functionality.
 
 ## Project status
 
-The repository is configured as a v1.0.0 release candidate. APIs and UI may still change until the first Play production rollout is complete.
+Version 0.1.0 is a public prerelease for GitHub distribution. Google Play publication is a separate, manually managed process.
 
 ## Android baseline
 
