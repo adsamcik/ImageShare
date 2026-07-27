@@ -8,6 +8,7 @@
     "LongMethod",
     "CyclomaticComplexMethod",
 )
+@file:android.annotation.SuppressLint("InlinedApi")
 
 package com.imageshare.app.ui
 
@@ -147,6 +148,7 @@ fun MainScreen(
     val recentsUris by viewModel.recentsUris.collectAsState()
     val shownComparison by viewModel.shownComparison.collectAsState()
     var showLicenses by remember { mutableStateOf(false) }
+    var showPrivacyPolicy by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     var smartChooserVisible by remember { mutableStateOf(false) }
@@ -243,7 +245,9 @@ fun MainScreen(
         )
     }
 
-    if (showLicenses) {
+    if (showPrivacyPolicy) {
+        PrivacyPolicyScreen(onBack = { showPrivacyPolicy = false })
+    } else if (showLicenses) {
         LicensesScreen(onBack = { showLicenses = false })
     } else {
         PresetSheet(
@@ -285,6 +289,7 @@ fun MainScreen(
             onExpandResult = viewModel::onExpandResult,
             onCloseComparison = viewModel::onCloseComparison,
             onAlphaConflictStrategy = viewModel::resolveAlphaConflicts,
+            onOpenPrivacyPolicy = { showPrivacyPolicy = true },
             onOpenLicenses = { showLicenses = true },
             snackbarHostState = snackbarHostState,
         )
@@ -391,6 +396,7 @@ fun PresetSheet(
     onExpandResult: (PresetPipeline.Result.Success) -> Unit = {},
     onCloseComparison: () -> Unit = {},
     onAlphaConflictStrategy: (AlphaConflictStrategy) -> Unit,
+    onOpenPrivacyPolicy: () -> Unit = {},
     onOpenLicenses: () -> Unit = {},
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -425,6 +431,13 @@ fun PresetSheet(
                             expanded = overflowMenuExpanded,
                             onDismissRequest = { overflowMenuExpanded = false },
                         ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.privacy_policy_title)) },
+                                onClick = {
+                                    overflowMenuExpanded = false
+                                    onOpenPrivacyPolicy()
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.licenses_screen_title)) },
                                 onClick = {
