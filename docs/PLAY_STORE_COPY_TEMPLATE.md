@@ -13,7 +13,7 @@ Trimmed options:
 3. `ImageShare: Resize & Share` (27)
 4. `ImageShare: Photo Prep` (22)
 
-`<DECISION REQUIRED: choose final app title and punctuation style.>`
+**Selected:** `ImageShare`.
 
 ## Short description (80 char max)
 
@@ -21,7 +21,7 @@ Trimmed options:
 2. `Private image prep: resize, convert, strip metadata, then share.`
 3. `Shrink and share images on-device with no cloud uploads or analytics.`
 
-`<DECISION REQUIRED: choose final short description.>`
+**Selected:** `Resize, compress & share photos. No internet, no tracking, no ads.`
 
 ## Full description (4000 char max)
 
@@ -51,8 +51,7 @@ Privacy-first by design:
 Format support:
 
 - Input: JPEG, PNG, HEIF, WebP, GIF, AVIF.
-- Output: JPEG, PNG, WebP, HEIF, AVIF.
-- Actual codec support can vary by Android version and device capabilities.
+- Output: JPEG, PNG, and WebP.
 
 For power users:
 
@@ -63,7 +62,7 @@ For power users:
 
 Open source:
 
-`<TODO: insert public GitHub repository URL when repo is made public.>`
+https://github.com/adsamcik/ImageShare
 
 ImageShare is built for people who want smaller, cleaner images without sending private photos through another service. Choose a photo, pick a preset, process locally, and share with confidence.
 
@@ -75,7 +74,7 @@ Use one short line on the 1024×500 banner. Options:
 2. `No cloud. No tracking. Just image prep.`
 3. `Smaller images, safer sharing.`
 
-`<DECISION REQUIRED: choose feature graphic tagline and visual direction.>`
+**Selected:** `Resize privately. Share faster.` See `docs/store-assets/`.
 
 ## Promo video script (optional, 30 seconds)
 
@@ -87,7 +86,7 @@ Use one short line on the 1024×500 banner. Options:
 
 **23–30 seconds:** "ImageShare: private image prep before you send."
 
-`<TODO: decide whether to create a promo video for v1.0 or defer until after launch.>`
+The optional public promo video is deferred until after v1.0. The separate reviewer-accessible foreground-service declaration video remains required before submission.
 
 ## Update notes for v1.0.0
 
@@ -100,4 +99,4 @@ First release of ImageShare:
 - Metadata stripping for privacy.
 - No internet permission, analytics, ads, or telemetry.
 
-`<TODO: confirm final release version name and version code before uploading to Play Console.>`
+**Confirmed for first upload:** version name `1.0.0`, version code `1`.

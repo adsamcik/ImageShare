@@ -1,6 +1,12 @@
+---
+layout: default
+title: Privacy Policy — ImageShare
+permalink: /privacy/
+---
+
 # Privacy Policy — ImageShare
 
-Last updated: 2026-05-13
+Last updated: 2026-07-27
 
 ## Overview
 ImageShare is a privacy-first Android app for resizing and sharing images.
@@ -34,7 +40,9 @@ We do NOT request photo, location, camera, microphone, or contacts permissions.
 By default, ImageShare strips ALL metadata from processed images, including
 GPS coordinates, camera serial numbers, and timestamps. You can opt into a
 "Preserve safe metadata" mode that keeps only date/time and color information;
-camera identifiers and GPS are never preserved.
+camera identifiers and GPS are not included in that safe subset. A separate
+"Preserve all" option is available when you explicitly choose to retain other
+metadata; orientation is still normalized after processing.
 
 ## Children
 ImageShare does not target users under 13 and does not knowingly collect any
@@ -47,5 +55,4 @@ notify users of changes through the app.
 
 ## Contact
 If you have questions about this policy, file an issue on the project's
-GitHub repository: https://github.com/<TBD-public-repo-owner>/ImageShare
-(Update this URL once the repo is public.)
+GitHub repository: https://github.com/adsamcik/ImageShare

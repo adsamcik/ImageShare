@@ -18,7 +18,7 @@ GitHub Pages is free and provides a stable HTTPS URL.
 7. Open the generated URL, usually:
 
 ```text
-https://<TODO: github-username-or-org>.github.io/<TODO: repository-name>/PRIVACY_POLICY
+https://adsamcik.github.io/ImageShare/privacy/
 ```
 
 If GitHub serves the Markdown page with a `.html` suffix, use the exact final browser URL.
@@ -75,7 +75,7 @@ Use this only as a fallback.
 After verifying the hosted page, replace:
 
 ```text
-<TODO: insert hosted privacy policy URL after completing docs/PRIVACY_POLICY_HOSTING.md>
+https://adsamcik.github.io/ImageShare/privacy/
 ```
 
 with the final URL in `docs/STORE_LISTING.md`.

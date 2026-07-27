@@ -56,47 +56,28 @@ IMAGESHARE_KEY_PASSWORD=<TODO: key password>
 
 Before continuing, confirm `.gitignore` excludes local secret files. Never add these values to tracked files.
 
-## 3. Update `app/build.gradle.kts`
+## 3. Gradle integration
 
-`app/build.gradle.kts` currently has no `signingConfigs.release` block. Add a helper that reads environment variables first, then `local.properties`:
+The release signing configuration is already wired into `app/build.gradle.kts`.
+It reads the four values above from environment variables first and then from the ignored root `local.properties` file.
 
-```kotlin
-import java.util.Properties
+Behavior:
 
-val localProperties = Properties().apply {
-    val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
-        localPropertiesFile.inputStream().use(::load)
-    }
-}
+- `assembleRelease` remains available without credentials for CI/R8/lint verification and produces an unsigned APK.
+- `bundleRelease` runs `validateReleaseSigning` and fails before packaging if any credential is missing or the keystore path is invalid.
+- When all four values are present, the release APK/AAB is signed and R8 plus resource shrinking are enabled.
+- Partial credentials never produce a publishable bundle.
 
-fun signingValue(name: String): String? =
-    System.getenv(name) ?: localProperties.getProperty(name)
+For GitHub Actions, add these repository secrets:
 
-android {
-    signingConfigs {
-        create("release") {
-            val keystorePath = signingValue("IMAGESHARE_KEYSTORE_PATH")
-            if (!keystorePath.isNullOrBlank()) {
-                storeFile = file(keystorePath)
-                storePassword = signingValue("IMAGESHARE_KEYSTORE_PASSWORD")
-                keyAlias = signingValue("IMAGESHARE_KEY_ALIAS")
-                keyPassword = signingValue("IMAGESHARE_KEY_PASSWORD")
-            }
-        }
-    }
-
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = true
-            isShrinkResources = true
-        }
-    }
-}
+```text
+IMAGESHARE_KEYSTORE_BASE64
+IMAGESHARE_KEYSTORE_PASSWORD
+IMAGESHARE_KEY_ALIAS
+IMAGESHARE_KEY_PASSWORD
 ```
 
-If release builds should fail fast when secrets are missing, add explicit validation in the release build path. `<TODO: decide whether local release builds should fail when signing values are absent or only CI should enforce this.>`
+Encode the keystore without line wrapping and store the output as `IMAGESHARE_KEYSTORE_BASE64`. The manual **Play release bundle** workflow decodes it only into the runner's temporary directory, verifies the AAB signature, records a SHA-256 checksum, and removes the temporary key.
 
 ## 4. Verify
 
@@ -106,7 +87,7 @@ Build the release APK:
 .\gradlew.bat :app:assembleRelease
 ```
 
-Expected result:
+Expected result when credentials are configured:
 
 - A signed APK is produced under `app\build\outputs\apk\release\`.
 - The output filename should not contain `unsigned`.
@@ -114,7 +95,7 @@ Expected result:
 Verify the signature with Android SDK Build Tools:
 
 ```powershell
-$apksigner = "$env:LOCALAPPDATA\Android\Sdk\build-tools\<TODO: installed build-tools version>\apksigner.bat"
+$apksigner = "$env:LOCALAPPDATA\Android\Sdk\build-tools\36.1.0\apksigner.bat"
 & $apksigner verify --verbose .\app\build\outputs\apk\release\<TODO: signed release apk filename>.apk
 ```
 

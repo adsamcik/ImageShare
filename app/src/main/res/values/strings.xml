@@ -149,7 +149,7 @@
     <string name="licenses_view_source_a11y">View %1$s source</string>
     <string name="privacy_policy_title">Privacy policy</string>
     <string name="privacy_policy_back_a11y">Back</string>
-    <string name="privacy_policy_last_updated">Last updated: July 25, 2026</string>
+    <string name="privacy_policy_last_updated">Last updated: July 27, 2026</string>
     <string name="privacy_policy_overview_title">Overview</string>
     <string name="privacy_policy_overview_body">ImageShare processes images locally on your device. It does not collect, transmit, sell, or share personal data. It has no accounts, advertising, analytics, crash reporting, cloud service, or INTERNET permission.</string>
     <string name="privacy_policy_device_data_title">Data kept on your device</string>

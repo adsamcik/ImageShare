@@ -32,15 +32,17 @@ for the Play Console "Data safety" form and is provided in plain language for th
 - No camera, location, microphone, or contacts data.
 - No personal information (name, email, phone, address).
 - No device identifiers (advertising ID, device ID, IMEI).
-- No images themselves between sessions — original images stay where they were (gallery, other apps); processed copies live in app-private cache for at most 24 hours unless you explicitly save them.
+- No permanent app-managed image library — originals stay where they were (gallery, other apps); staged and processed copies live in app-private cache for at most 24 hours unless you explicitly save them.
 
 ## Backup posture
-- Android Auto Backup IS enabled (`android:allowBackup="true"`) but excludes:
-  - The Recently-opened SAF URI list (device-bound URIs are useless on a new phone)
-  - The Room batch manifest (ephemeral)
-  - All cache directories (ephemeral)
-- Auto Backup DOES include:
-  - The default-preset selection (so you get your preferred preset back on a new device)
+- Android Auto Backup remains enabled (`android:allowBackup="true"`) only for the default-preset
+  selection, so your preferred preset can follow you to a new device.
+- Both the Android 11-and-lower rules and Android 12+ cloud/device-transfer rules are explicit
+  include-only allowlists. Any new app-private state is excluded until it is deliberately reviewed
+  and added to the allowlist.
+- The allowlist excludes the Recently-opened SAF URI list, Room batch manifest, sharing-target
+  history, auto-process-on-share setting, and all cache/output data. This avoids restoring
+  device-bound URIs, app-usage history, ephemeral job state, or image copies.
 
 ## EXIF privacy
 ImageShare's default behavior is to **strip ALL EXIF metadata** from processed images:
@@ -54,18 +56,14 @@ The user can opt into a "Preserve safe metadata" mode that keeps only:
 - DateTime, DateTimeOriginal, DateTimeDigitized
 - ColorSpace, ImageWidth, ImageLength, BitsPerSample
 
-(Camera identifiers and GPS are NEVER preserved, even in "preserve" modes.)
+(Camera identifiers and GPS are not included in the PreserveSafe subset.)
 
 A "Preserve all" mode also exists for users who want to keep camera info; even then,
 orientation is normalized to 1 (NORMAL) because the engine bakes pixel orientation
 during processing.
 
 ## Permissions ImageShare requests
-- `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC` + `FOREGROUND_SERVICE_SHORT_SERVICE` —
-  required by Android 14+ to run image batches with a progress notification when you
-  background the app mid-job. The service is bound to the batch and stops as soon as
-  it finishes. Used only for the WorkManager batch path; not used at all for in-foreground
-  single-share workflows.
+- `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_PROCESSING` — required by Android 14+ to run unbounded image batches with a progress notification when you background the app mid-job. The service is bound to the batch and stops as soon as it finishes. It uses the purpose-built `mediaProcessing` type rather than the three-minute `shortService` type; this path is used only for WorkManager batches, not in-foreground single-share workflows.
 - `POST_NOTIFICATIONS` — required by Android 13+ to show the batch progress notification.
   Notifications are silent (`IMPORTANCE_LOW`) and limited to batch progress + cancel.
 

@@ -5,9 +5,9 @@ All notable changes to ImageShare are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - Unreleased
 
-Pre-launch development. Ship date and v1.0.0 release notes finalized at ship time.
+First public release candidate prepared for Google Play publication.
 
 ### Added
 
@@ -63,7 +63,7 @@ These sections summarize foundation work done during pre-launch development. Fin
 - **Source intake** via Android 14+ photo picker (no broad media permissions) and SAF Open Documents (advanced).
 - **`ACTION_SEND` / `ACTION_SEND_MULTIPLE` intake** from any sharing-capable app.
 - **Format support — input**: JPEG, PNG, WebP, HEIF, AVIF (API 31+), animated GIF (first frame), screenshots.
-- **Format support — output**: JPEG, PNG, WebP-lossy, HEIF (when device supports), AVIF (Android 14+ platform encoder).
+- **Format support — output**: JPEG, PNG, WebP lossy, and WebP lossless.
 - **Custom dimensions** with optional aspect lock; upscaling-prevention warning blocks accidental quality loss.
 - **Target-size encoding** (e.g., Email preset) iteratively reduces quality/dimensions until the byte target is hit.
 - **Alpha-aware processing**: when sharing a transparent image with a JPEG-output preset, the user is asked whether to flatten with a white background or switch to PNG. The selected strategy is remembered.

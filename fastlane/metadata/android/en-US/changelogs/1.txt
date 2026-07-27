@@ -1,0 +1,6 @@
+First release of ImageShare:
+• Resize, compress, convert, and share images
+• Built-in presets and custom dimensions
+• Batch processing and target file size mode
+• Metadata stripping for privacy
+• No internet permission, analytics, ads, or telemetry

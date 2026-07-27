@@ -33,12 +33,17 @@ This document tracks gate findings from the Phase 3 audit that are deliberately 
 - **P3-S2**: `docs/DATA_SAFETY.md` for Play Console data-safety form. → Addressed by `docs/DATA_SAFETY.md`.
 - **P3-S3**: `LICENSE` + `NOTICE` + in-app OSS attribution screen. → Addressed by root `LICENSE`, `NOTICE`, `THIRD_PARTY_LICENSES`, and the in-app "Open-source licenses" screen.
 
-## Carryover from Phase 1+2 (still unaddressed)
+## Resolved in v1.0-launch hardening
 
-### Security
-- **P1-S1**: PNG `tEXt`/`iTXt`/`zTXt`/`eXIf` chunk stripping in `MetadataApplier`. PNG output is still pass-through. Currently the privacy contract for PNG StripAll is silently weaker than for JPEG/WebP. Either strip chunks or disable PNG for the StripAll preset until fixed. → v1.0-launch hardening phase.
-- **P1-S2**: Defensive `as? Uri` cast in pre-API-33 `getParcelableExtraCompat`. Currently a hostile sender can crash MainActivity via type confusion (DoS-only). → v1.0-launch hardening phase.
-- **P2-S1**: `MediaStoreSaver` orphan-row cleanup on copy failure. IS_PENDING rows accumulate if the file copy throws after insert. → v1.0-launch hardening phase.
+- **P1-S1**: `MetadataApplier` now strips PNG `tEXt`/`zTXt`/`iTXt`/`eXIf`/`tIME` privacy metadata for `StripAll`, while preserving image-affecting chunks. `PreserveSafe` and `PreserveAll` remain byte-for-byte PNG pass-through by the v1.0 contract. ✅
+- **P2-S1**: `MediaStoreSaver` now makes a best-effort deletion of the just-inserted `IS_PENDING` row if copying output fails, preventing orphaned MediaStore rows without masking the original copy failure. ✅
+- **P1-S2**: Share-intent URI retrieval now reads legacy extras as raw `Parcelable`s, safely filters to `Uri`, and rejects malformed parcel data instead of crashing the launcher activity. ✅
+- **P3-S1**: Backup is now an explicit allowlist containing only the default-preset DataStore across legacy Auto Backup and Android 12+ cloud/device-transfer rules. URI state, batch state, app-usage preferences, and caches are excluded by default. ✅
+- **P3-S4**: Batch failures persist only the allowlisted `BatchItemError` code; exception messages, including URI/path strings, are never saved. ✅
+- **P3-P5**: Cancellation cleanup and final sampled progress persistence run in `NonCancellable`, so manifest rows converge even after cancellation. ✅
+- **P3-S8**: `BatchProcessWorker` uses the purpose-built `mediaProcessing` foreground-service type for WorkManager image batches. `shortService` is not used because arbitrary user images cannot be guaranteed to complete within its approximately three-minute limit. On Android 15+, `mediaProcessing` has a cumulative six-hour-per-24-hour background budget; batches begin from the user-initiated processing flow. ✅
+
+## Carryover from Phase 1+2 (still unaddressed)
 
 ### Performance
 
@@ -47,13 +52,7 @@ This document tracks gate findings from the Phase 3 audit that are deliberately 
 
 ## Phase 3 specific (deferred to later phase)
 
-### Security
-- **P3-S1**: `android:allowBackup` posture + dataExtractionRules. Phase 3's new state (DataStore URI registry + Room manifest) is currently auto-backed-up to Google Drive. Either declare exclusion rules or set `allowBackup="false"`. → v1.0-launch hardening phase.
-- **P3-S4**: `BatchProcessWorker.errorMessage` persists arbitrary Throwable messages (may leak other-app content paths). Map to a small enum of error codes. → v1.0-launch hardening phase.
-- **P3-S8**: `FOREGROUND_SERVICE_TYPE_DATA_SYNC` has 6h/24h budget on API 35+. Consider `FOREGROUND_SERVICE_TYPE_SHORT_SERVICE` for batches <3min. → v1.0-launch hardening phase.
-
 ### Performance
-- **P3-P5**: Worker cancellation cleanup needs `withContext(NonCancellable)`. → v1.0-launch hardening phase.
 - **P3-P6**: Benchmark medians not yet captured. Hard prerequisite for v1.0 sign-off. → v1.0-launch phase.
 - **P3-P7**: Re-baseline profile on a wider device matrix before Play submission. → v1.0-launch phase.
 
@@ -66,8 +65,8 @@ The Phase 3 gate-fix adds adaptive launcher icons under `mipmap-anydpi-v26`. Den
 
 ## Recommended next phases (between p3-gate and p4-decision)
 
-1. **v1.0-launch hardening phase**: address Phase 3 P3-S* security items, P3-P5 (NonCancellable), and the Phase 1+2 carryover S1/S2/S6 items. Also captures benchmark numbers on a real device.
+1. **v1.0 release validation**: capture benchmark medians on a real device and re-baseline the profile on a wider device matrix.
 2. **v1.0 design-polish phase**: address the carryover D-* design items plus the P3 design medium/low items. Roughly one focused commit.
-3. **v1.0-launch phase**: author DATA_SAFETY.md, draft real STORE_LISTING.md copy, capture screenshots on a real device, add LICENSE + NOTICE + in-app OSS attribution screen.
+3. **v1.0 store readiness**: finalize real `STORE_LISTING.md` copy and capture screenshots on a real device.
 
 Only after these three close should `p4-decision` (native acceleration) be presented to the user.

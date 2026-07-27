@@ -4,13 +4,13 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![CI](https://github.com/adsamcik/ImageShare/actions/workflows/ci.yml/badge.svg)](https://github.com/adsamcik/ImageShare/actions/workflows/ci.yml)
-[![min sdk](https://img.shields.io/badge/minSdk-26-brightgreen)](https://developer.android.com/about/versions/oreo)
+[![min sdk](https://img.shields.io/badge/minSdk-29-brightgreen)](https://developer.android.com/about/versions/oreo)
 
 ## Features
 
 - **Privacy-first**: nothing leaves the device. No telemetry, no analytics, no network calls.
 - **Smart sharing**: top-3 most-used targets + alphabetical fallback, learned from your behavior.
-- **Format conversion**: JPEG, PNG, WebP, HEIF, AVIF.
+- **Format conversion**: JPEG, PNG, and WebP in the shipping app.
 - **Quality presets**: Email (200 KB target), Web (1 MB target), Original, custom.
 - **Metadata control**: strip all, preserve orientation-safe subset, or keep all.
 - **Transform API**: other apps can leverage ImageShare's pipeline without users leaving them. See [`docs/transform-api/`](./docs/transform-api/).
@@ -52,11 +52,13 @@ Two sample host apps are available in [`samples/`](./samples/):
 ./gradlew :sdk:imageshare-api:assembleDebug :sdk:imageshare-api:testDebugUnitTest
 ```
 
+For a signed Google Play bundle, configure the upload key as described in [`docs/RELEASE_SIGNING_SETUP.md`](./docs/RELEASE_SIGNING_SETUP.md), then run `./gradlew :app:bundleRelease`.
+
 The native JPEG and AVIF prebuilts are skipped by default; the Kotlin-only fallback handles all current functionality.
 
 ## Project status
 
-This repository is currently pre-launch scaffolding plus active Transform API work. APIs and UI may change before the first stable release.
+The repository is configured as a v1.0.0 release candidate. APIs and UI may still change until the first Play production rollout is complete.
 
 ## Android baseline
 

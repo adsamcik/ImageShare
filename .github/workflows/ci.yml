@@ -42,6 +42,9 @@ jobs:
       - name: Grant gradlew execute
         run: chmod +x ./gradlew
 
+      - name: Verify Google Play metadata
+        run: python3 tools/verify_play_readiness.py
+
       - name: Assemble + unit tests
         run: ./gradlew --no-daemon --console=plain "-Pimageshare.skipNativeJpegBuild=true" "-Pimageshare.skipNativeAvifBuild=true" :app:assembleDebug :app:assembleRelease :app:testDebugUnitTest :sdk:imageshare-api:assembleDebug :sdk:imageshare-api:testDebugUnitTest :samples:minimal-host:assembleDebug :samples:picker-host:assembleDebug
 
