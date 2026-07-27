@@ -1,0 +1,13 @@
+# ImageShare v0.1.0 tag signing key
+
+This public key verifies the signed `v0.1.0` Git tag.
+
+```text
+orchestrator@imageshare.local ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHxH+Id2PNit9JcIA50W9rynT+lYHToWaDCIcNOsenIV
+```
+
+To verify the tag locally:
+
+```bash
+git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=docs/release-keys/imageshare-v0.1.0-ssh-signing.pub verify-tag v0.1.0
+```
