@@ -15,6 +15,7 @@ app/build/generated/source/ksp/
 *.jks
 *.p12
 *.pem
+/.release-signing/
 *.key
 keystore.properties
 signing.properties
