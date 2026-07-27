@@ -43,7 +43,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("androidx.annotation:annotation:1.8.0")
+    implementation("androidx.annotation:annotation:1.10.0")
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
