@@ -110,7 +110,7 @@ android {
 
 val validateReleaseSigning by tasks.registering {
     group = "verification"
-    description = "Fails unless all credentials required for a Play release bundle are configured."
+    description = "Fails unless all credentials required for a signed release are configured."
 
     doLast {
         val missing = releaseSigningValues.filterValues { it == null }.keys
@@ -125,11 +125,6 @@ val validateReleaseSigning by tasks.registering {
     }
 }
 
-tasks.configureEach {
-    if (name == "bundleRelease") {
-        dependsOn(validateReleaseSigning)
-    }
-}
 
 kotlin {
     compilerOptions {

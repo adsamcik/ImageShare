@@ -28,9 +28,8 @@ This document tracks gate findings from the Phase 3 audit that are deliberately 
 - **P1-P3**: `Encoder` ByteArray double-buffer remains deferred. Streaming directly into `MetadataApplier`'s temp file would couple the isolated encoder API to metadata application for a bounded encoded payload allocation that is typically 500 KB-2 MB. Keep the testable ByteArray boundary until real benchmark numbers show this is a measurable bottleneck.
 - **P1-P4**: `MetadataApplier` temp-file roundtrip remains deferred with P1-P3. Without an Encoder-to-file contract, changing only the metadata side adds complexity without removing the final readback needed by current callers. Revisit both together if benchmark capture proves the file roundtrip dominates.
 
-## Resolved in v10-store-listing
+## Resolved prior to prerelease
 
-- **P3-S2**: `docs/DATA_SAFETY.md` for Play Console data-safety form. → Addressed by `docs/DATA_SAFETY.md`.
 - **P3-S3**: `LICENSE` + `NOTICE` + in-app OSS attribution screen. → Addressed by root `LICENSE`, `NOTICE`, `THIRD_PARTY_LICENSES`, and the in-app "Open-source licenses" screen.
 
 ## Resolved in v1.0-launch hardening

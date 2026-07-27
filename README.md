@@ -52,14 +52,13 @@ Two sample host apps are available in [`samples/`](./samples/):
 ./gradlew :sdk:imageshare-api:assembleDebug :sdk:imageshare-api:testDebugUnitTest
 ```
 
-GitHub releases build a signed APK from repository secrets. For a separately managed Google Play bundle, configure the upload key as described in [`docs/RELEASE_SIGNING_SETUP.md`](./docs/RELEASE_SIGNING_SETUP.md), then run `./gradlew :app:bundleRelease`.
-Google Play publication is always manual: CI can build a signed AAB artifact, but it never uploads or rolls out a Play release.
+GitHub releases build a signed APK from repository secrets; see [`docs/RELEASE_SIGNING_SETUP.md`](./docs/RELEASE_SIGNING_SETUP.md) for the required maintainer configuration.
 
 The native JPEG and AVIF prebuilts are skipped by default; the Kotlin-only fallback handles all current functionality.
 
 ## Project status
 
-Version 0.1.0 is a public prerelease for GitHub distribution. Google Play publication is a separate, manually managed process.
+Version 0.1.0 is a public prerelease distributed through GitHub Releases.
 
 ## Android baseline
 

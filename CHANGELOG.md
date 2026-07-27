@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2026-07-27
 
-First public ImageShare prerelease. Signed APKs are distributed from the GitHub release page; Google Play bundles are built and uploaded separately by a maintainer.
+First public ImageShare prerelease. Signed APKs are distributed from the GitHub release page.
 
 ### Added
 
