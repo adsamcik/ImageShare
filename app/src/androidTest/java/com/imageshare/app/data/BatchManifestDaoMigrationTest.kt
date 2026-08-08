@@ -5,6 +5,7 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -115,8 +116,88 @@ class BatchManifestDaoMigrationTest {
         assertTrue(columns.contains("sourceHeight"))
     }
 
+    @Test
+    fun migrationFrom3To4AddsNullableWorkerConfiguration() {
+        helper.createDatabase(TEST_DB_V3, 3).apply {
+            execSQL(
+                """
+                INSERT INTO batch_manifest (
+                    jobId,
+                    sourceIndex,
+                    sourceUriString,
+                    state,
+                    storedFilePath,
+                    outputMimeType,
+                    errorCode,
+                    updatedAt,
+                    sourceMimeType,
+                    sourceDisplayName,
+                    sourceSizeBytes,
+                    sourceWidth,
+                    sourceHeight
+                ) VALUES (
+                    'job',
+                    0,
+                    'content://images/0',
+                    'Queued',
+                    '/cache/input.jpg',
+                    'image/jpeg',
+                    NULL,
+                    1000,
+                    'image/jpeg',
+                    'input.jpg',
+                    42,
+                    640,
+                    480
+                )
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(
+            TEST_DB_V3,
+            4,
+            true,
+            ImageShareDatabase.MIGRATION_3_4,
+        )
+        val columns = mutableSetOf<String>()
+        db.query("PRAGMA table_info(`batch_manifest`)").use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) columns += cursor.getString(nameIndex)
+        }
+        db.query(
+            """
+            SELECT
+                `sourceMimeType`,
+                `sourceDisplayName`,
+                `sourceSizeBytes`,
+                `sourceWidth`,
+                `sourceHeight`,
+                `workerPresetId`,
+                `workerPresetJson`
+            FROM `batch_manifest`
+            WHERE `jobId` = 'job' AND `sourceIndex` = 0
+            """.trimIndent(),
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("image/jpeg", cursor.getString(cursor.getColumnIndexOrThrow("sourceMimeType")))
+            assertEquals("input.jpg", cursor.getString(cursor.getColumnIndexOrThrow("sourceDisplayName")))
+            assertEquals(42L, cursor.getLong(cursor.getColumnIndexOrThrow("sourceSizeBytes")))
+            assertEquals(640, cursor.getInt(cursor.getColumnIndexOrThrow("sourceWidth")))
+            assertEquals(480, cursor.getInt(cursor.getColumnIndexOrThrow("sourceHeight")))
+            assertNull(cursor.getString(cursor.getColumnIndexOrThrow("workerPresetId")))
+            assertNull(cursor.getString(cursor.getColumnIndexOrThrow("workerPresetJson")))
+        }
+        db.close()
+
+        assertTrue(columns.contains("workerPresetId"))
+        assertTrue(columns.contains("workerPresetJson"))
+    }
+
     private companion object {
         const val TEST_DB = "batch-manifest-migration"
         const val TEST_DB_V2 = "batch-manifest-migration-v2"
+        const val TEST_DB_V3 = "batch-manifest-migration-v3"
     }
 }
