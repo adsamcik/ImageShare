@@ -30,6 +30,9 @@ data class BatchManifestEntity(
     val sourceSizeBytes: Long? = null,
     val sourceWidth: Int? = null,
     val sourceHeight: Int? = null,
+    /** Immutable worker configuration, written before a background hand-off is scheduled. */
+    val workerPresetId: String? = null,
+    val workerPresetJson: String? = null,
 )
 
 fun BatchManifestEntity.toSourceItem(): SourceItem = SourceItem(
@@ -54,6 +57,15 @@ interface BatchManifestDao {
     @Query("SELECT jobId FROM batch_manifest WHERE state = 'Pending' GROUP BY jobId ORDER BY MAX(updatedAt) DESC")
     suspend fun pendingJobIds(): List<String>
 
+    @Query("SELECT jobId FROM batch_manifest WHERE state = 'Queued' GROUP BY jobId ORDER BY MIN(updatedAt) ASC")
+    suspend fun queuedJobIds(): List<String>
+
+    @Query("SELECT jobId FROM batch_manifest WHERE state IN ('Pending', 'Queued') GROUP BY jobId ORDER BY MAX(updatedAt) DESC")
+    suspend fun protectedJobIds(): List<String>
+
+    @Query("DELETE FROM batch_manifest WHERE jobId = :jobId AND state = 'Queued'")
+    suspend fun deleteQueuedJob(jobId: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entries: List<BatchManifestEntity>)
 
@@ -75,7 +87,7 @@ interface BatchManifestDao {
     suspend fun purgeOlderThan(cutoffMillis: Long): Int
 }
 
-@Database(entities = [BatchManifestEntity::class], version = 3, exportSchema = true)
+@Database(entities = [BatchManifestEntity::class], version = 4, exportSchema = true)
 abstract class ImageShareDatabase : RoomDatabase() {
     abstract fun batchManifestDao(): BatchManifestDao
 
@@ -136,10 +148,17 @@ abstract class ImageShareDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `batch_manifest` ADD COLUMN `workerPresetId` TEXT")
+                db.execSQL("ALTER TABLE `batch_manifest` ADD COLUMN `workerPresetJson` TEXT")
+            }
+        }
+
         fun create(context: Context): ImageShareDatabase = Room.databaseBuilder(
             context,
             ImageShareDatabase::class.java,
             "imageshare.db",
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
     }
 }

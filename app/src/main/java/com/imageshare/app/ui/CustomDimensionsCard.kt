@@ -74,6 +74,7 @@ fun CustomDimensionsCard(
     preset: Preset,
     customOverride: MainViewModel.CustomOverride?,
     onCustomOverride: (MainViewModel.CustomOverride?) -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -91,6 +92,7 @@ fun CustomDimensionsCard(
                     .fillMaxWidth()
                     .clickable(
                         onClickLabel = toggleLabel,
+                        enabled = enabled,
                         onClick = { expanded = !expanded },
                     )
                     .semantics {
@@ -116,12 +118,13 @@ fun CustomDimensionsCard(
                     modifier = Modifier.rotate(rotation),
                 )
             }
-            if (expanded) {
+            if (expanded && enabled) {
                 CustomDimensionsContent(
                     sources = sources,
                     baseResize = preset.resize,
                     customOverride = customOverride,
                     onCustomOverride = onCustomOverride,
+                    enabled = enabled,
                 )
             }
         }
@@ -134,6 +137,7 @@ private fun CustomDimensionsContent(
     baseResize: ResizeMode,
     customOverride: MainViewModel.CustomOverride?,
     onCustomOverride: (MainViewModel.CustomOverride?) -> Unit,
+    enabled: Boolean,
 ) {
     val activeResize = customOverride?.resize ?: baseResize
     var mode by remember { mutableStateOf(activeResize.toEditMode()) }
@@ -157,8 +161,8 @@ private fun CustomDimensionsContent(
         }
     }
 
-    LaunchedEffect(mode, longEdgeText, widthText, heightText, percentage, allowUpscale, dirty) {
-        if (!dirty) return@LaunchedEffect
+    LaunchedEffect(mode, longEdgeText, widthText, heightText, percentage, allowUpscale, dirty, enabled) {
+        if (!enabled || !dirty) return@LaunchedEffect
         delay(OVERRIDE_DEBOUNCE_MS)
         validatedResize(mode, longEdgeText, widthText, heightText, percentage)?.let { resize ->
             onCustomOverride(MainViewModel.CustomOverride(resize, allowUpscale))

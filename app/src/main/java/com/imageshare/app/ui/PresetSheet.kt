@@ -174,10 +174,15 @@ fun MainScreen(
         viewModel.onPostNotificationsPermissionResult(granted)
     }
 
-    fun clearPendingShare() {
+    fun dismissPendingShare() {
         smartChooserVisible = false
         shareTargets = emptyList()
-        viewModel.onPendingShareHandled()
+        viewModel.onPendingShareDismissed()
+    }
+    fun completePendingShareHandoff() {
+        smartChooserVisible = false
+        shareTargets = emptyList()
+        viewModel.onShareTargetLaunched()
     }
     fun showNoShareTargetSnackbar() {
         coroutineScope.launch {
@@ -195,7 +200,7 @@ fun MainScreen(
             }.onFailure { error ->
                 error.handleShareLaunchFailure(::showNoShareTargetSnackbar)
             }
-            clearPendingShare()
+            dismissPendingShare()
         } else {
             smartChooserVisible = true
         }
@@ -307,9 +312,9 @@ fun MainScreen(
                         context.startActivity(Intent(shareIntent).setComponent(componentName))
                     }
                     viewModel.recordSharingTarget(componentName)
-                    clearPendingShare()
+                    completePendingShareHandoff()
                 }.onFailure { error ->
-                    clearPendingShare()
+                    dismissPendingShare()
                     error.handleShareLaunchFailure(::showNoShareTargetSnackbar)
                 }
             },
@@ -317,13 +322,15 @@ fun MainScreen(
                 val shareIntent = pendingShareIntent ?: return@SmartShareChooser
                 runCatching {
                     context.startActivity(Intent.createChooser(shareIntent, null))
-                    clearPendingShare()
+                    // The system chooser does not report whether a target was ultimately used.
+                    // Keep these outputs available if the user returns without completing a share.
+                    dismissPendingShare()
                 }.onFailure { error ->
-                    clearPendingShare()
+                    dismissPendingShare()
                     error.handleShareLaunchFailure(::showNoShareTargetSnackbar)
                 }
             },
-            onDismiss = ::clearPendingShare,
+            onDismiss = ::dismissPendingShare,
         )
     }
 }
@@ -407,11 +414,16 @@ fun PresetSheet(
     val hasSuccessfulResult = when (processingState) {
         is ProcessingState.Done -> processingState.results.any { it is PresetPipeline.Result.Success }
         is ProcessingState.Cancelled -> processingState.partial.isNotEmpty()
+        is ProcessingState.Failed -> processingState.partial.isNotEmpty()
         ProcessingState.Idle,
         ProcessingState.IntakeFailed,
         is ProcessingState.Running,
         -> false
     }
+    val hasUnresolvedAlphaConflicts = (processingState as? ProcessingState.Done)
+        ?.alphaConflictCount
+        ?.let { it > 0 }
+        ?: false
     val upscaleBlocked = customOverride != null &&
         !customOverride.allowUpscale &&
         sources.any { source -> wouldUpscale(source, customOverride.resize) }
@@ -467,7 +479,7 @@ fun PresetSheet(
                         processEnabled = sources.isNotEmpty() && !isProcessing && !upscaleBlocked,
                         isProcessing = isProcessing,
                         saveEnabled = hasSuccessfulResult,
-                        shareEnabled = hasSuccessfulResult,
+                        shareEnabled = hasSuccessfulResult && !hasUnresolvedAlphaConflicts,
                         onProcessAndShare = onProcessAndShare,
                         onCancelBatch = onCancelBatch,
                         onShareReadyOutputs = onShareReadyOutputs,
@@ -504,7 +516,7 @@ fun PresetSheet(
                         onAddImages = onPickFromGallery,
                         onClearSources = onClearSources,
                     )
-                    PresetsSection(presets, selectedPreset, onPresetSelected)
+                    PresetsSection(presets, selectedPreset, onPresetSelected, enabled = !isProcessing)
                     effectivePreset?.let { PresetSummary(it) }
                     selectedPreset?.let {
                         Text(stringResource(R.string.resize_section_title), style = MaterialTheme.typography.titleMedium)
@@ -513,6 +525,7 @@ fun PresetSheet(
                             preset = it,
                             customOverride = customOverride,
                             onCustomOverride = onCustomOverride,
+                            enabled = !isProcessing,
                         )
                     }
                     if (upscaleBlocked) {
@@ -889,6 +902,7 @@ private fun PresetsSection(
     presets: List<Preset>,
     selectedPreset: Preset?,
     onPresetSelected: (String) -> Unit,
+    enabled: Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.preset_title), style = MaterialTheme.typography.titleMedium)
@@ -905,6 +919,7 @@ private fun PresetsSection(
                 FilterChip(
                     selected = isSelected,
                     onClick = { onPresetSelected(preset.id) },
+                    enabled = enabled,
                     label = { Text(preset.displayName) },
                     modifier = Modifier
                         .heightIn(min = 48.dp)
@@ -963,6 +978,10 @@ private fun StatusLine(processingState: ProcessingState) {
                 processingState.partial.size,
             )
             Text(text = text, modifier = Modifier.semantics { contentDescription = text })
+        }
+        is ProcessingState.Failed -> {
+            val text = stringResource(R.string.status_background_failed)
+            Text(text = text, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { contentDescription = text })
         }
     }
 }

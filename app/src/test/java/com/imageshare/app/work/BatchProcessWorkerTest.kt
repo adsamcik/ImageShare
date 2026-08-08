@@ -12,12 +12,14 @@ import com.imageshare.app.AppContainer
 import com.imageshare.app.data.BatchItemError
 import com.imageshare.app.data.BatchManifestDao
 import com.imageshare.app.data.BatchManifestEntity
+import com.imageshare.app.data.BatchManifestFailureCode
 import com.imageshare.app.data.ImageShareDatabase
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.processing.PresetPipelineRunner
 import com.imageshare.core.io.OutputStore
 import com.imageshare.core.io.SourceItem
+import com.imageshare.core.processing.EncodeError
 import com.imageshare.core.processing.EncodeFormat
 import com.imageshare.feature.preset.DefaultPresets
 import com.imageshare.feature.preset.Preset
@@ -310,6 +312,38 @@ class BatchProcessWorkerTest {
     }
 
     @Test
+    fun alphaConflictPersistsARecoverableManifestCode() = runTest {
+        seedManifest()
+        AppContainer.overrideForTests(
+            batchManifestDao = database.batchManifestDao(),
+            batchOrchestrator = BatchOrchestrator(
+                FakePipeline(context) { source, preset, _ ->
+                    if (source.uri.lastPathSegment == "0") {
+                        PresetPipeline.Result.Failure(
+                            before = source,
+                            cause = EncodeError.AlphaConflict(EncodeFormat.JPEG),
+                            step = PresetPipeline.Step.Encoding,
+                        )
+                    } else {
+                        success(context, source, preset, JOB_ID)
+                    }
+                },
+                StandardTestDispatcher(testScheduler),
+            ),
+            presetRepository = WorkerPresetRepository,
+        )
+
+        val result = worker().doWork()
+
+        assertEquals(androidx.work.ListenableWorker.Result.success(), result)
+        val failedRow = database.batchManifestDao().forJob(JOB_ID).first()
+        assertEquals(BatchProcessWorker.STATE_FAILED, failedRow.state)
+        assertEquals(
+            BatchManifestFailureCode.alphaConflict(EncodeFormat.JPEG),
+            failedRow.errorCode,
+        )
+    }
+    @Test
     fun progressEmissionsCoalescedTo10Hz() = runTest {
         seedManifest()
         val countingDao = CountingBatchManifestDao(database.batchManifestDao())
@@ -446,6 +480,12 @@ private class CountingBatchManifestDao(
     override suspend fun jobIds(): List<String> = delegate.jobIds()
 
     override suspend fun pendingJobIds(): List<String> = delegate.pendingJobIds()
+
+    override suspend fun queuedJobIds(): List<String> = delegate.queuedJobIds()
+
+    override suspend fun protectedJobIds(): List<String> = delegate.protectedJobIds()
+
+    override suspend fun deleteQueuedJob(jobId: String): Int = delegate.deleteQueuedJob(jobId)
 
     override suspend fun upsert(entries: List<BatchManifestEntity>) = delegate.upsert(entries)
 

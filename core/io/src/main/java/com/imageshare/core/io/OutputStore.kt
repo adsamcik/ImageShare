@@ -51,11 +51,14 @@ class OutputStore(
     }
 
     /** Best-effort sweep of jobs older than [olderThanMillis]. */
-    suspend fun sweep(olderThanMillis: Long = DEFAULT_SWEEP_AGE_MS) {
+    suspend fun sweep(
+        olderThanMillis: Long = DEFAULT_SWEEP_AGE_MS,
+        keepJobIds: Set<String> = emptySet(),
+    ) {
         withContext(Dispatchers.IO) {
             val cutoff = System.currentTimeMillis() - olderThanMillis
             root().listFiles()
-                ?.filter { it.isDirectory && it.lastModified() < cutoff }
+                ?.filter { it.isDirectory && it.name !in keepJobIds && it.lastModified() < cutoff }
                 ?.forEach { dir ->
                     runCatching { dir.deleteRecursively() }
                         .onFailure { Log.w(TAG, "Failed to sweep output dir $dir", it) }

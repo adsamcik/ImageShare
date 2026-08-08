@@ -125,6 +125,24 @@ class OutputStoreTest {
         assertTrue(intakeDir.exists())
     }
 
+    @Test
+    fun sweepKeepsProtectedOldJobDir() = runBlocking {
+        val cacheRoot = freshCacheRoot("sweep-protected")
+        val sharedOutput = cacheRoot.resolve(OutputStore.SUBDIR_NAME).apply { mkdirs() }
+        val pending = jobDir(sharedOutput, "pending-job", "keep")
+        val expired = jobDir(sharedOutput, "expired-job", "remove")
+        val old = System.currentTimeMillis() - OLD_JOB_AGE_MS
+        pending.setLastModified(old)
+        expired.setLastModified(old)
+
+        OutputStore(cacheRoot).sweep(
+            olderThanMillis = SWEEP_AGE_MS,
+            keepJobIds = setOf("pending-job"),
+        )
+
+        assertTrue(pending.exists())
+        assertFalse(expired.exists())
+    }
     private fun freshCacheRoot(name: String): File =
         File(RuntimeEnvironment.getApplication().cacheDir, "output-store-$name-${System.nanoTime()}")
             .apply {

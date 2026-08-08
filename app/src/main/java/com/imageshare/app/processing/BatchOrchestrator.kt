@@ -38,11 +38,19 @@ class BatchOrchestrator(
         jobId: String,
         sources: List<SourceItem>,
         preset: Preset,
+        onProgressSnapshot: ((BatchProgress) -> Unit)? = null,
     ): Flow<BatchProgress> = channelFlow {
         var progress = BatchProgress(
             jobId = jobId,
             items = sources.map { BatchProgress.Item(it, ItemState.Pending) },
         )
+
+        fun publish(updatedProgress: BatchProgress) {
+            // The worker needs a synchronous snapshot so cancellation cleanup never loses a completed
+            // item behind a coalesced Flow buffer.
+            onProgressSnapshot?.invoke(updatedProgress)
+            trySend(updatedProgress)
+        }
 
         fun withState(index: Int, state: ItemState, cancelled: Boolean = progress.cancelled): BatchProgress {
             progress = progress.copy(
@@ -67,20 +75,20 @@ class BatchOrchestrator(
             return progress
         }
 
-        trySend(progress)
+        publish(progress)
         try {
             sources.forEachIndexed { index, source ->
                 coroutineContext.ensureActive()
-                trySend(withState(index, ItemState.Running(PresetPipeline.Step.Decoding)))
+                publish(withState(index, ItemState.Running(PresetPipeline.Step.Decoding)))
                 val result = pipeline.run(source, preset, jobId) { step ->
-                    trySend(withState(index, ItemState.Running(step)))
+                    publish(withState(index, ItemState.Running(step)))
                 }
-                trySend(withState(index, ItemState.Done(result)))
+                publish(withState(index, ItemState.Done(result)))
             }
         } finally {
             if (!progress.finished) {
                 withContext(NonCancellable) {
-                    trySend(cancelledProgress())
+                    publish(cancelledProgress())
                 }
             }
         }

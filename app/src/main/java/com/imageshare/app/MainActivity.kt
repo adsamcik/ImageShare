@@ -11,10 +11,14 @@ import androidx.activity.compose.setContent
 import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import com.imageshare.app.data.BatchManifestDao
+import com.imageshare.core.io.OutputStore
+import com.imageshare.core.io.SharedIntakeStager
 import com.imageshare.app.ui.ImageShareTheme
 import com.imageshare.app.ui.MainScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by lazy {
@@ -56,19 +60,20 @@ class MainActivity : ComponentActivity() {
         val sharedUris = intent.extractImageShareUris()
         if (sharedUris.isEmpty()) return
 
-        val jobId = "share-${System.currentTimeMillis()}-${(0 until SHARE_RANDOM_BOUND).random()}"
-        lifecycleScope.launch {
-            viewModel.stageSharedUris(jobId, sharedUris)
-        }
+        val jobId = "share-${UUID.randomUUID()}"
+        // The ViewModel owns intake so a configuration change cannot cancel the source copy.
+        viewModel.acceptSharedUris(jobId, sharedUris)
     }
 
     private fun sweepCachesOnStart() {
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching {
                 AppContainer.persistableUriRegistry.reconcile()
-                AppContainer.sharedIntakeStager.sweep()
-                AppContainer.outputStore.sweep()
-                AppContainer.batchManifestDao.purgeOlderThan(System.currentTimeMillis() - MANIFEST_SWEEP_AGE_MS)
+                sweepSharedCaches(
+                    batchManifestDao = AppContainer.batchManifestDao,
+                    sharedIntakeStager = AppContainer.sharedIntakeStager,
+                    outputStore = AppContainer.outputStore,
+                )
             }.onFailure { Log.w(TAG, "Failed to sweep shared caches", it) }
         }
     }
@@ -78,6 +83,19 @@ class MainActivity : ComponentActivity() {
         @Volatile
         var smartShareLaunchInterceptor: ((ComponentName) -> Boolean)? = null
     }
+}
+
+/** Keeps each cache for exactly as long as its durable manifest can still restore it. */
+internal suspend fun sweepSharedCaches(
+    batchManifestDao: BatchManifestDao,
+    sharedIntakeStager: SharedIntakeStager,
+    outputStore: OutputStore,
+    nowMillis: Long = System.currentTimeMillis(),
+) {
+    batchManifestDao.purgeOlderThan(nowMillis - MANIFEST_SWEEP_AGE_MS)
+    val retainedJobIds = batchManifestDao.jobIds().toSet()
+    sharedIntakeStager.sweep(keepJobIds = retainedJobIds)
+    outputStore.sweep(keepJobIds = retainedJobIds)
 }
 
 @VisibleForTesting
@@ -140,7 +158,5 @@ private fun Intent.getClipDataUris(): List<Uri> {
         emptyList()
     }
 }
-
-private const val SHARE_RANDOM_BOUND = 10_000
 private const val MANIFEST_SWEEP_AGE_MS = 7L * 24L * 60L * 60L * 1_000L
 private const val TAG = "MainActivity"

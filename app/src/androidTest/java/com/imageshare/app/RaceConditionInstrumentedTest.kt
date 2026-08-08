@@ -51,7 +51,8 @@ class RaceConditionInstrumentedTest {
         val gate = CompletableDeferred<Unit>()
         val runner = BlockingPipelineRunner(context, gate)
         val viewModel = viewModel(runner)
-        viewModel.stageSharedUris("job", listOf(source.uri), StaticSharedIntakeRepository(listOf(source)))
+        viewModel.stageSharedUris("job", listOf(source.uri), StaticSharedIntakeRepository(listOf(source)), deferActivationUntilRecoveryCompletes = true)
+        waitUntilSources(viewModel, listOf(source.uri))
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.onProcessAndShare() }
         withTimeout(5_000L) { runner.firstStarted.await() }
@@ -71,7 +72,8 @@ class RaceConditionInstrumentedTest {
         val viewModel = viewModel(runner)
         val events = mutableListOf<Intent>()
         val collector = launch(Dispatchers.Main.immediate) { viewModel.shareEvents.collect { events += it } }
-        viewModel.stageSharedUris("job", listOf(source.uri), StaticSharedIntakeRepository(listOf(source)))
+        viewModel.stageSharedUris("job", listOf(source.uri), StaticSharedIntakeRepository(listOf(source)), deferActivationUntilRecoveryCompletes = true)
+        waitUntilSources(viewModel, listOf(source.uri))
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             viewModel.onProcessAndShare()
@@ -95,7 +97,8 @@ class RaceConditionInstrumentedTest {
         val runner = BlockingPipelineRunner(context, gate)
         val viewModel = viewModel(runner)
         val replacement = source("content://race/two", "two.jpg")
-        viewModel.stageSharedUris("job-1", listOf(source.uri), StaticSharedIntakeRepository(listOf(source)))
+        viewModel.stageSharedUris("job-1", listOf(source.uri), StaticSharedIntakeRepository(listOf(source)), deferActivationUntilRecoveryCompletes = true)
+        waitUntilSources(viewModel, listOf(source.uri))
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.onProcessAndShare() }
         withTimeout(5_000L) { runner.firstStarted.await() }

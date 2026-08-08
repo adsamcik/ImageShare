@@ -143,7 +143,6 @@ private class FakePresetRepository : PresetRepository {
 
 private class FakeSharedIntakeRepository(private val sources: List<SourceItem>) : SharedIntakeRepository {
     override suspend fun stage(jobId: String, uris: List<Uri>): List<SourceItem> = sources
-    override suspend fun sweep() = Unit
 }
 
 private class FakeBatchWorkScheduler : BatchWorkScheduler {

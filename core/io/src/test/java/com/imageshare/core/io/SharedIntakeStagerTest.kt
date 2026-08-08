@@ -93,6 +93,33 @@ class SharedIntakeStagerTest {
         assertTrue(directFile.exists())
     }
 
+    @Test
+    fun sweepKeepsProtectedOldJobDir() = runBlocking {
+        val cacheRoot = File(
+            RuntimeEnvironment.getApplication().cacheDir,
+            "sweep-protected-${System.nanoTime()}",
+        ).apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        val pending = File(cacheRoot, "pending-job").apply {
+            mkdirs()
+            File(this, "item").writeText("keep")
+        }
+        val expired = File(cacheRoot, "expired-job").apply {
+            mkdirs()
+            File(this, "item").writeText("remove")
+        }
+        val old = System.currentTimeMillis() - 10_000L
+        pending.setLastModified(old)
+        expired.setLastModified(old)
+
+        SharedIntakeStager(RuntimeEnvironment.getApplication().contentResolver, cacheRoot)
+            .sweep(olderThanMillis = 1_000L, keepJobIds = setOf("pending-job"))
+
+        assertTrue(pending.exists())
+        assertFalse(expired.exists())
+    }
     private fun stager(): SharedIntakeStager {
         val root = File(RuntimeEnvironment.getApplication().cacheDir, "shared-stager-test").apply { mkdirs() }
         return SharedIntakeStager(RuntimeEnvironment.getApplication().contentResolver, root)
@@ -123,7 +150,7 @@ private class StagingProvider(
         selectionArgs: Array<out String>?,
         sortOrder: String?,
     ): Cursor = MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)).apply {
-        addRow(arrayOf(displayName, bytes.size.toLong()))
+        addRow(arrayOf<Any?>(displayName, bytes.size.toLong()))
     }
 
     override fun getType(uri: Uri): String = "image/jpeg"

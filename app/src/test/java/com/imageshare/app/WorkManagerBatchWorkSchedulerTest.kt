@@ -48,7 +48,7 @@ class WorkManagerBatchWorkSchedulerTest {
     }
 
     @Test
-    fun observeWithoutWorkInfoCancelsOrphanedManifestRows() = runBlocking {
+    fun observeWithoutWorkInfoReportsRecoverableFailureAndPreservesManifestRows() = runBlocking {
         database.batchManifestDao().upsert(
             listOf(
                 manifestRow(0, BatchProcessWorker.STATE_PENDING),
@@ -65,9 +65,9 @@ class WorkManagerBatchWorkSchedulerTest {
         }
         val status = withTimeout(5_000) { statusDeferred.await() }
 
-        assertEquals(BatchWorkState.Cancelled, status.state)
+        assertEquals(BatchWorkState.Failed, status.state)
         val rows = database.batchManifestDao().forJob(JOB_ID)
-        assertEquals(2, rows.count { it.state == BatchProcessWorker.STATE_CANCELLED })
+        assertEquals(2, rows.count { it.state == BatchProcessWorker.STATE_PENDING })
         assertEquals(1, rows.count { it.state == BatchProcessWorker.STATE_DONE })
     }
 

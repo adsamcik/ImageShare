@@ -31,11 +31,14 @@ class SharedIntakeStager(
         }
     }
 
-    suspend fun sweep(olderThanMillis: Long = DEFAULT_SWEEP_AGE_MS) {
+    suspend fun sweep(
+        olderThanMillis: Long = DEFAULT_SWEEP_AGE_MS,
+        keepJobIds: Set<String> = emptySet(),
+    ) {
         withContext(Dispatchers.IO) {
             val cutoff = System.currentTimeMillis() - olderThanMillis
             cacheRoot.listFiles()
-                ?.filter { it.isDirectory && it.lastModified() < cutoff }
+                ?.filter { it.isDirectory && it.name !in keepJobIds && it.lastModified() < cutoff }
                 ?.forEach { dir ->
                     runCatching { dir.deleteRecursively() }
                         .onFailure { Log.w(TAG, "Failed to sweep staged dir $dir", it) }
@@ -90,7 +93,7 @@ class SharedIntakeStager(
     companion object {
         const val DEFAULT_SWEEP_AGE_MS: Long = 24L * 60L * 60L * 1_000L
         private const val TAG = "SharedIntakeStager"
-        private const val BUFFER_SIZE_BYTES = 8 * 1_024
+        private const val BUFFER_SIZE_BYTES = 64 * 1_024
     }
 }
 

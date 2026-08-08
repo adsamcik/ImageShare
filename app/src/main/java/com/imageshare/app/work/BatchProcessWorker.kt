@@ -19,6 +19,7 @@ import com.imageshare.app.AppContainer
 import com.imageshare.app.R
 import com.imageshare.app.data.BatchItemError
 import com.imageshare.app.data.BatchManifestEntity
+import com.imageshare.app.data.BatchManifestFailureCode
 import com.imageshare.app.data.toSourceItem
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
@@ -27,6 +28,7 @@ import com.imageshare.feature.preset.MetadataPolicy
 import com.imageshare.feature.preset.OutputFormat
 import com.imageshare.feature.preset.Preset
 import com.imageshare.feature.preset.ResizeMode
+import com.imageshare.core.processing.EncodeError
 import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -36,6 +38,7 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration.Companion.milliseconds
 
 class BatchProcessWorker(
@@ -80,19 +83,26 @@ class BatchProcessWorker(
         total: Int,
     ) {
         val sources = remaining.map { it.toSourceItem() }
-        var latestProgress: BatchOrchestrator.BatchProgress? = null
+        val latestProgress = AtomicReference<BatchOrchestrator.BatchProgress?>(null)
         var lastAppliedProgress: BatchOrchestrator.BatchProgress? = null
         try {
-            AppContainer.activeBatchOrchestrator.run(jobId, sources, preset)
+            AppContainer.activeBatchOrchestrator.run(
+                jobId = jobId,
+                sources = sources,
+                preset = preset,
+                onProgressSnapshot = { latestProgress.set(it) },
+            )
+                // Keep expensive Room and WorkManager progress updates coalesced, while the snapshot
+                // above still records every transition for cancellation cleanup.
                 .buffer(Channel.UNLIMITED)
-                .onEach { latestProgress = it }
+                .onEach { latestProgress.set(it) }
                 .sample(PROGRESS_SAMPLE_INTERVAL)
                 .collect { progress ->
                     applyProgress(jobId, remaining, total, progress)
                     lastAppliedProgress = progress
                 }
         } finally {
-            latestProgress
+            latestProgress.get()
                 ?.takeIf { it != lastAppliedProgress }
                 ?.let { progress ->
                     runNonCancellableCleanup("apply final batch progress") {
@@ -197,6 +207,7 @@ class BatchProcessWorker(
         const val NOTIFICATION_ID = 1001
         private val PROGRESS_SAMPLE_INTERVAL = 100.milliseconds
 
+        const val STATE_QUEUED = "Queued"
         const val STATE_PENDING = "Pending"
         const val STATE_DONE = "Done"
         const val STATE_FAILED = "Failed"
@@ -232,7 +243,7 @@ private fun BatchManifestEntity.withItemState(state: BatchOrchestrator.ItemState
             Log.w(TAG, "Item failed at ${result.step}", result.cause)
             copy(
                 state = BatchProcessWorker.STATE_FAILED,
-                errorCode = result.step.toBatchItemError().name,
+                errorCode = result.toManifestErrorCode(),
                 updatedAt = now(),
             )
         }
@@ -282,13 +293,17 @@ private fun JSONObject.snapshotTargetSizeBytes(): Long? {
 
 private fun <T : Enum<T>> JSONObject.requiredEnumValue(key: String, entries: Array<T>): T =
     entries.firstOrNull { it.name == getString(key) } ?: error("Invalid $key")
-
 private fun PresetPipeline.Step.toBatchItemError(): BatchItemError = when (this) {
     PresetPipeline.Step.Decoding -> BatchItemError.Decode
     PresetPipeline.Step.Resizing -> BatchItemError.Resize
     PresetPipeline.Step.Encoding -> BatchItemError.Encode
     PresetPipeline.Step.ApplyingMetadata -> BatchItemError.MetadataApply
     PresetPipeline.Step.Storing -> BatchItemError.Store
+}
+
+private fun PresetPipeline.Result.Failure.toManifestErrorCode(): String = when (val error = cause) {
+    is EncodeError.AlphaConflict -> BatchManifestFailureCode.alphaConflict(error.format)
+    else -> step.toBatchItemError().name
 }
 
 private fun now(): Long = System.currentTimeMillis()
