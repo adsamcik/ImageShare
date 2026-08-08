@@ -93,6 +93,76 @@ class BatchProcessWorkerTest {
     }
 
     @Test
+    fun fullPersistedSnapshotRunsWhenOriginalPresetNoLongerResolves() = runTest {
+        val missingPresetId = "removed-preset"
+        val snapshot = DefaultPresets.Email.copy(
+            format = com.imageshare.feature.preset.OutputFormat.PNG,
+            resize = com.imageshare.feature.preset.ResizeMode.Exact(640, 480),
+            quality = 83,
+            metadata = com.imageshare.feature.preset.MetadataPolicy.PreserveAll,
+            alphaFallback = com.imageshare.feature.preset.AlphaFallback.SwitchToPng,
+            targetSizeBytes = 456_789L,
+        )
+        val snapshotJson = """
+            {"type":"Exact","width":640,"height":480,"format":"PNG","quality":83,
+             "metadata":"PreserveAll","alphaFallback":"SwitchToPng","targetSizeBytes":456789}
+        """.trimIndent()
+        seedManifest()
+        val seenPresets = mutableListOf<Preset>()
+        AppContainer.overrideForTests(
+            batchManifestDao = database.batchManifestDao(),
+            batchOrchestrator = BatchOrchestrator(
+                FakePipeline(context) { source, preset, jobId ->
+                    seenPresets += preset
+                    success(context, source, preset, jobId)
+                },
+                StandardTestDispatcher(testScheduler),
+            ),
+            presetRepository = MissingWorkerPresetRepository,
+        )
+
+        val result = worker(presetId = missingPresetId, presetJson = snapshotJson).doWork()
+
+        assertEquals(androidx.work.ListenableWorker.Result.success(), result)
+        assertEquals(
+            snapshot.copy(
+                id = missingPresetId,
+                displayName = "Recovered preset",
+                builtIn = false,
+            ),
+            seenPresets.distinct().single(),
+        )
+    }
+
+    @Test
+    fun legacyResizeOnlyOverrideFailsWhenOriginalPresetNoLongerResolves() = runTest {
+        seedManifest()
+        var pipelineStarted = false
+        AppContainer.overrideForTests(
+            batchManifestDao = database.batchManifestDao(),
+            batchOrchestrator = BatchOrchestrator(
+                FakePipeline(context) { source, preset, jobId ->
+                    pipelineStarted = true
+                    success(context, source, preset, jobId)
+                },
+                StandardTestDispatcher(testScheduler),
+            ),
+            presetRepository = MissingWorkerPresetRepository,
+        )
+
+        val result = worker(
+            presetId = "removed-preset",
+            presetJson = """{"type":"LongEdge","pixels":640}""",
+        ).doWork()
+
+        assertEquals(androidx.work.ListenableWorker.Result.failure(), result)
+        assertTrue(!pipelineStarted)
+        assertTrue(
+            database.batchManifestDao().forJob(JOB_ID)
+                .all { it.state == BatchProcessWorker.STATE_PENDING },
+        )
+    }
+    @Test
     fun workerRestoresAllSourceMetadataFromManifest() = runTest {
         seedManifest()
         val seenSources = mutableListOf<SourceItem>()
@@ -292,13 +362,21 @@ class BatchProcessWorkerTest {
         height = 4_000 + index,
     )
 
-    private fun worker(): BatchProcessWorker = TestListenableWorkerBuilder<BatchProcessWorker>(context)
-        .setInputData(
-            Data.Builder()
-                .putString(BatchProcessWorker.KEY_JOB_ID, JOB_ID)
-                .putString(BatchProcessWorker.KEY_PRESET_ID, DefaultPresets.DEFAULT_PRESET_ID)
-                .build(),
-        ).build()
+    private fun worker(
+        presetId: String = DefaultPresets.DEFAULT_PRESET_ID,
+        presetJson: String? = null,
+    ): BatchProcessWorker {
+        val inputData = Data.Builder()
+            .putString(BatchProcessWorker.KEY_JOB_ID, JOB_ID)
+            .putString(BatchProcessWorker.KEY_PRESET_ID, presetId)
+            .apply {
+                presetJson?.let { putString(BatchProcessWorker.KEY_CUSTOM_OVERRIDE_JSON, it) }
+            }
+            .build()
+        return TestListenableWorkerBuilder<BatchProcessWorker>(context)
+            .setInputData(inputData)
+            .build()
+    }
 
     private companion object {
         const val JOB_ID = "job"
@@ -348,6 +426,15 @@ private object WorkerPresetRepository : com.imageshare.feature.preset.PresetRepo
     override suspend fun getPreset(id: String): Preset? = DefaultPresets.ALL.firstOrNull { it.id == id }
 }
 
+private object MissingWorkerPresetRepository : com.imageshare.feature.preset.PresetRepository {
+    override fun observePresets() = kotlinx.coroutines.flow.flowOf(emptyList<Preset>())
+
+    override fun observeDefaultPresetId() = kotlinx.coroutines.flow.flowOf(DefaultPresets.DEFAULT_PRESET_ID)
+
+    override suspend fun setDefaultPresetId(id: String) = Unit
+
+    override suspend fun getPreset(id: String): Preset? = null
+}
 private class CountingBatchManifestDao(
     private val delegate: BatchManifestDao,
 ) : BatchManifestDao {

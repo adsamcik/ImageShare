@@ -22,7 +22,12 @@ import com.imageshare.app.data.BatchManifestEntity
 import com.imageshare.app.data.toSourceItem
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
+import com.imageshare.feature.preset.AlphaFallback
+import com.imageshare.feature.preset.MetadataPolicy
+import com.imageshare.feature.preset.OutputFormat
 import com.imageshare.feature.preset.Preset
+import com.imageshare.feature.preset.ResizeMode
+import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.NonCancellable
@@ -40,7 +45,11 @@ class BatchProcessWorker(
     override suspend fun doWork(): Result {
         val jobId = inputData.getString(KEY_JOB_ID) ?: return Result.failure()
         val presetId = inputData.getString(KEY_PRESET_ID) ?: return Result.failure()
-        val preset = resolvePreset(presetId) ?: return Result.failure()
+        val presetJson = inputData.getString(KEY_CUSTOM_OVERRIDE_JSON)
+        val preset = resolvePreset(presetId)
+            ?.withWorkerOverride(presetJson)
+            ?: presetFromCompleteWorkerSnapshot(presetId, presetJson)
+            ?: return Result.failure()
         val manifest = AppContainer.batchManifestDao.forJob(jobId)
         if (manifest.isEmpty()) return Result.failure()
 
@@ -51,8 +60,7 @@ class BatchProcessWorker(
         if (remaining.isEmpty()) return Result.success()
 
         return try {
-            val workerPreset = preset.withWorkerOverride(inputData.getString(KEY_CUSTOM_OVERRIDE_JSON))
-            runBatch(jobId, remaining, workerPreset, manifest.size)
+            runBatch(jobId, remaining, preset, manifest.size)
             Result.success()
         } catch (error: CancellationException) {
             runNonCancellableCleanup("mark pending rows cancelled") {
@@ -234,6 +242,46 @@ private fun BatchManifestEntity.withItemState(state: BatchOrchestrator.ItemState
     is BatchOrchestrator.ItemState.Running,
     -> this
 }
+
+/**
+ * A current worker snapshot contains every conversion setting, so it can safely recover a batch
+ * after the original preset has been removed. Older work requests only contain a resize override;
+ * those intentionally return null here and retain the historical failure behavior when the preset
+ * cannot be resolved.
+ */
+private fun presetFromCompleteWorkerSnapshot(presetId: String, json: String?): Preset? {
+    if (json.isNullOrBlank()) return null
+    return runCatching {
+        val values = JSONObject(json)
+        Preset(
+            id = presetId,
+            displayName = "Recovered preset",
+            format = values.requiredEnumValue("format", OutputFormat.values()),
+            resize = values.toSnapshotResizeMode(),
+            quality = values.getInt("quality"),
+            metadata = values.requiredEnumValue("metadata", MetadataPolicy.values()),
+            alphaFallback = values.requiredEnumValue("alphaFallback", AlphaFallback.values()),
+            targetSizeBytes = values.snapshotTargetSizeBytes(),
+            builtIn = false,
+        )
+    }.getOrNull()
+}
+
+private fun JSONObject.toSnapshotResizeMode(): ResizeMode = when (getString("type")) {
+    "Exact" -> ResizeMode.Exact(getInt("width"), getInt("height"))
+    "LongEdge" -> ResizeMode.LongEdge(getInt("pixels"))
+    "Percentage" -> ResizeMode.Percentage(getInt("pct"))
+    "Original" -> ResizeMode.Original
+    else -> error("Unknown resize mode")
+}
+
+private fun JSONObject.snapshotTargetSizeBytes(): Long? {
+    check(has("targetSizeBytes")) { "Missing targetSizeBytes" }
+    return if (isNull("targetSizeBytes")) null else getLong("targetSizeBytes")
+}
+
+private fun <T : Enum<T>> JSONObject.requiredEnumValue(key: String, entries: Array<T>): T =
+    entries.firstOrNull { it.name == getString(key) } ?: error("Invalid $key")
 
 private fun PresetPipeline.Step.toBatchItemError(): BatchItemError = when (this) {
     PresetPipeline.Step.Decoding -> BatchItemError.Decode
