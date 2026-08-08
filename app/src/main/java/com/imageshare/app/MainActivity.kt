@@ -93,9 +93,9 @@ internal fun Intent?.extractImageShareUris(): List<Uri> {
     if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return emptyList()
 
     // Some senders put the image only in ClipData, while others mirror EXTRA_STREAM there to
-    // carry URI grants. Keep EXTRA_STREAM ordering, include ClipData-only entries, and avoid
-    // processing an image twice when both representations contain the same URI.
-    return (streamUris + getClipDataUris()).distinct()
+    // carry URI grants. EXTRA_STREAM is the sender's ordered payload, so it may intentionally
+    // contain the same URI more than once. Keep it intact, then add only ClipData-only entries.
+    return streamUris + getClipDataUris().filterNot(streamUris::contains)
 }
 
 private fun Intent.getParcelableExtraCompat(name: String): Uri? =

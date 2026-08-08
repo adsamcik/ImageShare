@@ -50,7 +50,7 @@ class ShareIntentUriExtractionTest {
     }
 
     @Test
-    fun multipleShareMergesAndDeduplicatesStreamAndClipDataUris() {
+    fun multipleSharePreservesDuplicateExtraStreamsAndExcludesMirroredClipData() {
         val first = Uri.parse("content://imageshare.test/first")
         val second = Uri.parse("content://imageshare.test/second")
         val clipData = ClipData.newRawUri("first image", first).apply {
@@ -60,6 +60,21 @@ class ShareIntentUriExtractionTest {
             .putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(first, first))
             .apply { this.clipData = clipData }
 
-        assertEquals(listOf(first, second), intent.extractImageShareUris())
+        assertEquals(listOf(first, first, second), intent.extractImageShareUris())
+    }
+
+    @Test
+    fun multipleShareDropsEveryClipDataMirrorWithoutCollapsingExtraStreamPayload() {
+        val first = Uri.parse("content://imageshare.test/first")
+        val second = Uri.parse("content://imageshare.test/second")
+        val clipData = ClipData.newRawUri("first image", first).apply {
+            addItem(ClipData.Item(first))
+            addItem(ClipData.Item(second))
+        }
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE)
+            .putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(first, first, second))
+            .apply { this.clipData = clipData }
+
+        assertEquals(listOf(first, first, second), intent.extractImageShareUris())
     }
 }
