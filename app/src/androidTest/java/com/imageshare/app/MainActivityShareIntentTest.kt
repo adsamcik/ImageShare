@@ -20,10 +20,13 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.imageshare.core.io.OutputStore
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,6 +36,18 @@ import java.io.File
 class MainActivityShareIntentTest {
     @get:Rule
     val composeRule = createEmptyComposeRule()
+
+    @Before
+    fun resetPersistedShareState() = runBlocking {
+        val manifestDao = AppContainer.database.batchManifestDao()
+        for (jobId in manifestDao.jobIds()) {
+            manifestDao.deleteJob(jobId)
+        }
+
+        val cacheDir = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
+        clearDirectory(File(cacheDir, SHARED_INTAKE_DIR))
+        clearDirectory(File(cacheDir, OutputStore.SUBDIR_NAME))
+    }
 
     @Test
     fun actionSendDisplaysStagedContentAndSharesProcessedOutput() {
@@ -262,6 +277,12 @@ class MainActivityShareIntentTest {
             .walkTopDown()
             .filter { it.isFile && !it.relativeTo(File(appCacheDir, "shared-output")).path.startsWith("test-fixtures") }
             .toList()
+
+    private fun clearDirectory(directory: File) {
+        if (directory.exists()) {
+            check(directory.deleteRecursively()) { "Could not clear test share cache." }
+        }
+    }
 
     private fun assertFlatWhiteJpeg(file: File) {
         val bitmap = BitmapFactory.decodeFile(file.absolutePath)
