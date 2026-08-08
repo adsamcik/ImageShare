@@ -22,6 +22,7 @@ import com.imageshare.feature.preset.OutputFormat
 import com.imageshare.feature.preset.Preset
 import com.imageshare.feature.preset.ResizeMode
 import kotlin.math.max
+import kotlinx.coroutines.CancellationException
 
 class PresetPipeline(
     private val resolver: ContentResolver,
@@ -53,29 +54,48 @@ class PresetPipeline(
         jobId: String,
         onProgress: (Step) -> Unit,
     ): Result {
-        val decoded = decode(source, preset, onProgress) ?: return failedResult
-        val bitmap = resize(source, preset.resize, decoded, onProgress) ?: return failedResult
-        val encoded = encode(source, preset, decoded.hadAlpha, bitmap, onProgress) ?: return failedResult
-        val finalBytes = applyMetadata(source, preset.metadata, encoded, onProgress) ?: return failedResult
-        return store(source, jobId, encoded, finalBytes, onProgress) ?: return failedResult
+        val decoded = when (val outcome = decode(source, preset, onProgress)) {
+            is StepOutcome.Value -> outcome.value
+            is StepOutcome.Failed -> return outcome.failure
+        }
+        val bitmap = when (val outcome = resize(source, preset.resize, decoded, onProgress)) {
+            is StepOutcome.Value -> outcome.value
+            is StepOutcome.Failed -> return outcome.failure
+        }
+        val encoded = when (val outcome = encode(source, preset, decoded.hadAlpha, bitmap, onProgress)) {
+            is StepOutcome.Value -> outcome.value
+            is StepOutcome.Failed -> return outcome.failure
+        }
+        val finalBytes = when (val outcome = applyMetadata(source, preset.metadata, encoded, onProgress)) {
+            is StepOutcome.Value -> outcome.value
+            is StepOutcome.Failed -> return outcome.failure
+        }
+        return when (val outcome = store(source, jobId, encoded, finalBytes, onProgress)) {
+            is StepOutcome.Value -> outcome.value
+            is StepOutcome.Failed -> outcome.failure
+        }
     }
 
-    private lateinit var failedResult: Result.Failure
+    private sealed interface StepOutcome<out T> {
+        data class Value<out T>(val value: T) : StepOutcome<T>
+
+        data class Failed(val failure: Result.Failure) : StepOutcome<Nothing>
+    }
 
     private suspend fun decode(
         source: SourceItem,
         preset: Preset,
         onProgress: (Step) -> Unit,
-    ): DecodedImage? = runStep(source, Step.Decoding, onProgress) {
+    ): StepOutcome<DecodedImage> = runStep(source, Step.Decoding, onProgress) {
         Decoder(resolver).decode(source.uri, targetLongEdgePx = resolveLongEdge(preset.resize, source))
     }
 
-    private fun resize(
+    private suspend fun resize(
         source: SourceItem,
         resize: ResizeMode,
         decoded: DecodedImage,
         onProgress: (Step) -> Unit,
-    ) = runStep(source, Step.Resizing, onProgress) {
+    ): StepOutcome<android.graphics.Bitmap> = runStep(source, Step.Resizing, onProgress) {
         when (resize) {
             is ResizeMode.Exact -> Resizer().toExact(
                 decoded.bitmap,
@@ -101,7 +121,7 @@ class PresetPipeline(
         hadAlpha: Boolean,
         bitmap: android.graphics.Bitmap,
         onProgress: (Step) -> Unit,
-    ): EncodeResult? = runStep(source, Step.Encoding, onProgress) {
+    ): StepOutcome<EncodeResult> = runStep(source, Step.Encoding, onProgress) {
         val format = resolveEncodeFormat(preset.format, preset.alphaFallback, hadAlpha)
         val alphaPolicy = resolveAlphaPolicy(preset.alphaFallback, format)
         val targetSizeBytes = preset.targetSizeBytes
@@ -135,7 +155,7 @@ class PresetPipeline(
         metadata: MetadataPolicy,
         encoded: EncodeResult,
         onProgress: (Step) -> Unit,
-    ): ByteArray? = runStep(source, Step.ApplyingMetadata, onProgress) {
+    ): StepOutcome<ByteArray> = runStep(source, Step.ApplyingMetadata, onProgress) {
         MetadataApplier(resolver).apply(
             encoded = encoded.bytes,
             format = encoded.format,
@@ -150,7 +170,7 @@ class PresetPipeline(
         encoded: EncodeResult,
         bytes: ByteArray,
         onProgress: (Step) -> Unit,
-    ): Result.Success? = runStep(source, Step.Storing, onProgress) {
+    ): StepOutcome<Result.Success> = runStep(source, Step.Storing, onProgress) {
         val stored = outputStore.store(
             jobId = jobId,
             filename = outputFilename(source.displayName, jobId, encoded.format),
@@ -160,17 +180,18 @@ class PresetPipeline(
         Result.Success(stored, source, encoded.width, encoded.height, encoded.format)
     }
 
-    private inline fun <T> runStep(
+    private suspend fun <T> runStep(
         source: SourceItem,
         step: Step,
         onProgress: (Step) -> Unit,
-        block: () -> T,
-    ): T? = try {
+        block: suspend () -> T,
+    ): StepOutcome<T> = try {
         onProgress(step)
-        block()
+        StepOutcome.Value(block())
+    } catch (error: CancellationException) {
+        throw error
     } catch (throwable: Throwable) {
-        failedResult = Result.Failure(source, throwable, step)
-        null
+        StepOutcome.Failed(Result.Failure(source, throwable, step))
     }
 }
 
