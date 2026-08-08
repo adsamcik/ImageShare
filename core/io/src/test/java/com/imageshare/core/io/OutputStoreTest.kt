@@ -70,6 +70,37 @@ class OutputStoreTest {
     }
 
     @Test
+    fun storeSameNameWithinJobKeepsEachOutput() = runBlocking {
+        val cacheRoot = freshCacheRoot("same-name")
+        val store = OutputStore(cacheRoot)
+
+        val first = store.store("job", "image.jpg", byteArrayOf(1), "image/jpeg")
+        val second = store.store("job", "image.jpg", byteArrayOf(2), "image/jpeg")
+        val third = store.store("job", "image.jpg", byteArrayOf(3), "image/jpeg")
+
+        assertEquals("image.jpg", first.filename)
+        assertEquals("image-1.jpg", second.filename)
+        assertEquals("image-2.jpg", third.filename)
+        assertArrayEquals(byteArrayOf(1), first.file.readBytes())
+        assertArrayEquals(byteArrayOf(2), second.file.readBytes())
+        assertArrayEquals(byteArrayOf(3), third.file.readBytes())
+    }
+
+    @Test
+    fun storeSameNameInDifferentJobsKeepsPreferredName() = runBlocking {
+        val cacheRoot = freshCacheRoot("same-name-different-jobs")
+        val store = OutputStore(cacheRoot)
+
+        val first = store.store("job-one", "image.jpg", byteArrayOf(1), "image/jpeg")
+        val second = store.store("job-two", "image.jpg", byteArrayOf(2), "image/jpeg")
+
+        assertEquals("image.jpg", first.filename)
+        assertEquals("image.jpg", second.filename)
+        assertArrayEquals(byteArrayOf(1), first.file.readBytes())
+        assertArrayEquals(byteArrayOf(2), second.file.readBytes())
+    }
+
+    @Test
     fun sweepDeletesOnlyOldJobDirsUnderSharedOutput() = runBlocking {
         val cacheRoot = freshCacheRoot("sweep")
         val sharedOutput = cacheRoot.resolve(OutputStore.SUBDIR_NAME).apply { mkdirs() }
