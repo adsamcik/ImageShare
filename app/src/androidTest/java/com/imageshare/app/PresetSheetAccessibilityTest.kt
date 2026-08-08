@@ -26,6 +26,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.test.hasText
 import com.imageshare.app.ComparisonState
 import com.imageshare.app.MainViewModel.CustomOverride
+import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.ui.PresetSheet
 import com.imageshare.core.io.OutputStore
@@ -80,6 +81,39 @@ class PresetSheetAccessibilityTest {
         composeRule.onNodeWithText("Save copy").assertIsDisplayed()
     }
 
+    @Test
+    fun sourceManagementActionsAreDisabledWhileProcessing() {
+        val source = SourceItem(
+            uri = Uri.parse("content://images/photo"),
+            mimeType = "image/jpeg",
+            displayName = "photo.jpg",
+            sizeBytes = 2_458L,
+            width = 64,
+            height = 48,
+        )
+        val progress = BatchOrchestrator.BatchProgress(
+            jobId = "job",
+            items = listOf(BatchOrchestrator.BatchProgress.Item(source, BatchOrchestrator.ItemState.Pending)),
+        )
+
+        composeRule.setContent {
+            PresetSheet(
+                sources = listOf(source),
+                presets = DefaultPresets.ALL,
+                selectedPreset = DefaultPresets.SmallFile,
+                processingState = ProcessingState.Running(progress),
+                onPresetSelected = {},
+                onPickFromGallery = {},
+                onProcessAndShare = {},
+                onCancelBatch = {},
+                onSaveCopy = {},
+                onAlphaConflictStrategy = {},
+            )
+        }
+
+        composeRule.onNodeWithTag("add-images-button").assertIsNotEnabled()
+        composeRule.onNodeWithTag("clear-sources-button").assertIsNotEnabled()
+    }
     @Test
     fun customDimensionsEditEmitGuardAndReset() {
         val source = SourceItem(

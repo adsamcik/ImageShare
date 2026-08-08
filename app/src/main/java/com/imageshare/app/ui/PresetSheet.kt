@@ -147,12 +147,12 @@ fun MainScreen(
     val topSharingTargets by viewModel.topSharingTargets.collectAsState()
     val recentsUris by viewModel.recentsUris.collectAsState()
     val shownComparison by viewModel.shownComparison.collectAsState()
+    val pendingShareIntent by viewModel.pendingShareIntent.collectAsState()
     var showLicenses by remember { mutableStateOf(false) }
     var showPrivacyPolicy by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     var smartChooserVisible by remember { mutableStateOf(false) }
-    var pendingShareIntent by remember { mutableStateOf<Intent?>(null) }
     var shareTargets by remember { mutableStateOf(emptyList<ResolveInfoEntry>()) }
     val picker = rememberPhotoPickerLauncher(
         onResult = viewModel::onPickerResult,
@@ -176,30 +176,28 @@ fun MainScreen(
 
     fun clearPendingShare() {
         smartChooserVisible = false
-        pendingShareIntent = null
+        shareTargets = emptyList()
+        viewModel.onPendingShareHandled()
     }
-
     fun showNoShareTargetSnackbar() {
         coroutineScope.launch {
             snackbarHostState.showSnackbar(context.getString(R.string.share_failed_no_target))
         }
     }
 
-    LaunchedEffect(viewModel) {
-        viewModel.shareEvents.collect { shareIntent ->
-            pendingShareIntent = shareIntent
-            val targets = withContext(Dispatchers.IO) { context.queryShareTargets(shareIntent) }
-            shareTargets = targets
-            if (targets.isEmpty()) {
-                runCatching {
-                    context.startActivity(Intent.createChooser(shareIntent, null))
-                }.onFailure { error ->
-                    error.handleShareLaunchFailure(::showNoShareTargetSnackbar)
-                }
-                pendingShareIntent = null
-            } else {
-                smartChooserVisible = true
+    LaunchedEffect(pendingShareIntent) {
+        val shareIntent = pendingShareIntent ?: return@LaunchedEffect
+        val targets = withContext(Dispatchers.IO) { context.queryShareTargets(shareIntent) }
+        shareTargets = targets
+        if (targets.isEmpty()) {
+            runCatching {
+                context.startActivity(Intent.createChooser(shareIntent, null))
+            }.onFailure { error ->
+                error.handleShareLaunchFailure(::showNoShareTargetSnackbar)
             }
+            clearPendingShare()
+        } else {
+            smartChooserVisible = true
         }
     }
     LaunchedEffect(viewModel) {
@@ -269,6 +267,7 @@ fun MainScreen(
                 picker.launchMultiple()
             },
             onOpenDocuments = { safLauncher.launchMultiple() },
+            onClearSources = viewModel::onClearSources,
             recentsUris = recentsUris,
             onRecentSelected = viewModel::onRecentSelected,
             onRecentRemoved = viewModel::onRecentRemoved,
@@ -285,6 +284,7 @@ fun MainScreen(
                 )
             },
             onCancelBatch = viewModel::onCancelBatch,
+            onShareReadyOutputs = viewModel::onShareReadyOutputs,
             onSaveCopy = viewModel::onSaveCopy,
             onExpandResult = viewModel::onExpandResult,
             onCloseComparison = viewModel::onCloseComparison,
@@ -387,11 +387,13 @@ fun PresetSheet(
     onPresetSelected: (String) -> Unit,
     onPickFromGallery: () -> Unit,
     onOpenDocuments: () -> Unit = {},
+    onClearSources: () -> Unit = {},
     recentsUris: List<RecentUriEntry> = emptyList(),
     onRecentSelected: (Uri) -> Unit = {},
     onRecentRemoved: (Uri) -> Unit = {},
     onProcessAndShare: () -> Unit,
     onCancelBatch: () -> Unit,
+    onShareReadyOutputs: () -> Unit = {},
     onSaveCopy: () -> Unit,
     onExpandResult: (PresetPipeline.Result.Success) -> Unit = {},
     onCloseComparison: () -> Unit = {},
@@ -402,9 +404,14 @@ fun PresetSheet(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val isProcessing = processingState is ProcessingState.Running
-    val hasSuccessfulResult = (processingState as? ProcessingState.Done)
-        ?.results
-        ?.any { it is PresetPipeline.Result.Success } ?: false
+    val hasSuccessfulResult = when (processingState) {
+        is ProcessingState.Done -> processingState.results.any { it is PresetPipeline.Result.Success }
+        is ProcessingState.Cancelled -> processingState.partial.isNotEmpty()
+        ProcessingState.Idle,
+        ProcessingState.IntakeFailed,
+        is ProcessingState.Running,
+        -> false
+    }
     val upscaleBlocked = customOverride != null &&
         !customOverride.allowUpscale &&
         sources.any { source -> wouldUpscale(source, customOverride.resize) }
@@ -460,8 +467,10 @@ fun PresetSheet(
                         processEnabled = sources.isNotEmpty() && !isProcessing && !upscaleBlocked,
                         isProcessing = isProcessing,
                         saveEnabled = hasSuccessfulResult,
+                        shareEnabled = hasSuccessfulResult,
                         onProcessAndShare = onProcessAndShare,
                         onCancelBatch = onCancelBatch,
+                        onShareReadyOutputs = onShareReadyOutputs,
                         onSaveCopy = onSaveCopy,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -487,8 +496,14 @@ fun PresetSheet(
                         onRecentSelected = onRecentSelected,
                         onRecentRemoved = onRecentRemoved,
                     )
+                    StatusLine(processingState)
                 } else {
-                    SourcesSection(sources)
+                    SourcesSection(
+                        sources = sources,
+                        enabled = !isProcessing,
+                        onAddImages = onPickFromGallery,
+                        onClearSources = onClearSources,
+                    )
                     PresetsSection(presets, selectedPreset, onPresetSelected)
                     effectivePreset?.let { PresetSummary(it) }
                     selectedPreset?.let {
@@ -809,9 +824,36 @@ private fun RecentUriChip(
 }
 
 @Composable
-private fun SourcesSection(sources: List<SourceItem>) {
+private fun SourcesSection(
+    sources: List<SourceItem>,
+    enabled: Boolean,
+    onAddImages: () -> Unit,
+    onClearSources: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.sources_title), style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(R.string.sources_title), style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = onAddImages,
+                    enabled = enabled,
+                    modifier = Modifier.testTag("add-images-button"),
+                ) {
+                    Text(stringResource(R.string.add_images))
+                }
+                TextButton(
+                    onClick = onClearSources,
+                    enabled = enabled,
+                    modifier = Modifier.testTag("clear-sources-button"),
+                ) {
+                    Text(stringResource(R.string.clear_sources))
+                }
+            }
+        }
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -827,7 +869,6 @@ private fun SourcesSection(sources: List<SourceItem>) {
         }
     }
 }
-
 @Composable
 private fun SourceRow(source: SourceItem) {
     val name = source.displayName ?: stringResource(R.string.unnamed_image)
@@ -902,6 +943,10 @@ private fun PresetSummary(preset: Preset) {
 private fun StatusLine(processingState: ProcessingState) {
     when (processingState) {
         ProcessingState.Idle -> return
+        ProcessingState.IntakeFailed -> {
+            val text = stringResource(R.string.status_intake_failed)
+            Text(text = text, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { contentDescription = text })
+        }
         is ProcessingState.Running -> BatchProgressStatus(processingState.progress)
         is ProcessingState.Done -> {
             val text = stringResource(
@@ -1028,8 +1073,10 @@ private fun ProcessButtons(
     processEnabled: Boolean,
     isProcessing: Boolean,
     saveEnabled: Boolean,
+    shareEnabled: Boolean,
     onProcessAndShare: () -> Unit,
     onCancelBatch: () -> Unit,
+    onShareReadyOutputs: () -> Unit = {},
     onSaveCopy: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1083,6 +1130,18 @@ private fun ProcessButtons(
                 ) {
                     Text(stringResource(R.string.cancel_batch))
                 }
+            }
+        }
+        val shareReadyDescription = stringResource(R.string.share_ready_description)
+        if (shareEnabled) {
+            Button(
+                onClick = onShareReadyOutputs,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("share-ready-button")
+                    .semantics { contentDescription = shareReadyDescription },
+            ) {
+                Text(stringResource(R.string.share_ready))
             }
         }
         val saveCopyDescription = stringResource(R.string.save_copy_description)

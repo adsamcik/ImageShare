@@ -2,6 +2,8 @@
     <string name="app_name">ImageShare</string>
     <string name="top_bar_title">ImageShare</string>
     <string name="sources_title">Sources</string>
+    <string name="add_images">Add images</string>
+    <string name="clear_sources">Clear</string>
     <string name="preset_title">Preset</string>
     <string name="resize_section_title">Resize</string>
     <string name="custom_dimensions_title">Customize dimensions</string>
@@ -23,6 +25,9 @@
     <string name="recents_empty">No recent files yet</string>
     <string name="process_and_share">Process &amp; share</string>
     <string name="process_and_share_description">Process and share</string>
+    <string name="share_ready">Share again</string>
+    <string name="share_ready_description">Share the converted images again</string>
+    <string name="status_intake_failed">Couldn\'t open the shared image. Try sharing it again.</string>
     <string name="cancel_batch">Cancel</string>
     <string name="cancel_batch_description">Cancel batch</string>
     <string name="save_copy">Save copy</string>
