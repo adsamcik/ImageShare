@@ -48,7 +48,7 @@ interface BatchManifestDao {
     @Query("SELECT * FROM batch_manifest WHERE jobId = :jobId ORDER BY sourceIndex")
     suspend fun forJob(jobId: String): List<BatchManifestEntity>
 
-    @Query("SELECT DISTINCT jobId FROM batch_manifest ORDER BY updatedAt DESC")
+    @Query("SELECT jobId FROM batch_manifest GROUP BY jobId ORDER BY MAX(updatedAt) DESC")
     suspend fun jobIds(): List<String>
 
     @Query("SELECT DISTINCT jobId FROM batch_manifest WHERE state = 'Pending' ORDER BY updatedAt DESC")

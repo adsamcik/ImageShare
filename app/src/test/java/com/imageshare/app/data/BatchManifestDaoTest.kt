@@ -48,6 +48,21 @@ class BatchManifestDaoTest {
         assertEquals(emptyList<BatchManifestEntity>(), dao.forJob("job"))
     }
 
+
+    @Test
+    fun jobIdsAreOrderedByEachJobsLatestUpdate() = runTest {
+        dao.upsert(
+            listOf(
+                entry(0).copy(jobId = "oldest", updatedAt = 100L),
+                entry(1).copy(jobId = "oldest", updatedAt = 1_000L),
+                entry(0).copy(jobId = "middle", updatedAt = 900L),
+                entry(1).copy(jobId = "middle", updatedAt = 200L),
+                entry(0).copy(jobId = "newest", updatedAt = 1_100L),
+            ),
+        )
+
+        assertEquals(listOf("newest", "oldest", "middle"), dao.jobIds())
+    }
     private fun entry(index: Int) = BatchManifestEntity(
         jobId = "job",
         sourceIndex = index,
