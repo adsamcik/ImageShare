@@ -10,19 +10,18 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
-import androidx.room.Room
-import androidx.test.core.app.ApplicationProvider
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
 import com.imageshare.app.data.BatchManifestDao
-import com.imageshare.app.data.ImageShareDatabase
+import com.imageshare.app.data.BatchManifestEntity
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.saving.PersistentSaver
 import com.imageshare.core.io.MediaStoreSaver
 import com.imageshare.app.processing.PresetPipeline
 import com.imageshare.app.processing.PresetPipelineRunner
+import com.imageshare.app.work.BatchProcessWorker
 import com.imageshare.core.io.OutputStore
 import com.imageshare.core.io.PersistableUriRegistry
 import com.imageshare.core.io.ShareLauncher
@@ -473,10 +472,7 @@ class MainViewModelTest {
         )
     }
 
-    private fun batchManifestDao(): BatchManifestDao = Room.inMemoryDatabaseBuilder(
-        ApplicationProvider.getApplicationContext(),
-        ImageShareDatabase::class.java,
-    ).allowMainThreadQueries().build().batchManifestDao()
+    private fun batchManifestDao(): BatchManifestDao = InMemoryBatchManifestDao()
 
     private fun persistableUriRegistry(context: android.content.Context): PersistableUriRegistry {
         return PersistableUriRegistry(testDataStore(context, "main-view-model"), context.contentResolver)
@@ -563,6 +559,81 @@ private class FakeBatchWorkScheduler : BatchWorkScheduler {
         flowOf(BatchWorkStatus(BatchWorkState.Succeeded))
 
     override fun cancel(jobId: String) = Unit
+}
+
+private class InMemoryBatchManifestDao : BatchManifestDao {
+    private val lock = Any()
+    private val entries = mutableMapOf<Pair<String, Int>, BatchManifestEntity>()
+
+    override suspend fun forJob(jobId: String): List<BatchManifestEntity> = synchronized(lock) {
+        entries.values.filter { it.jobId == jobId }.sortedBy { it.sourceIndex }
+    }
+
+    override suspend fun jobIds(): List<String> = synchronized(lock) {
+        entries.values.groupBy { it.jobId }.entries
+            .sortedByDescending { (_, rows) -> rows.maxOf { it.updatedAt } }
+            .map { it.key }
+    }
+
+    override suspend fun pendingJobIds(): List<String> = jobIdsWithState(BatchProcessWorker.STATE_PENDING, descending = true)
+
+    override suspend fun queuedJobIds(): List<String> = jobIdsWithState(BatchProcessWorker.STATE_QUEUED, descending = false)
+
+    override suspend fun protectedJobIds(): List<String> = synchronized(lock) {
+        entries.values
+            .filter { it.state == BatchProcessWorker.STATE_PENDING || it.state == BatchProcessWorker.STATE_QUEUED }
+            .groupBy { it.jobId }
+            .entries
+            .sortedByDescending { (_, rows) -> rows.maxOf { it.updatedAt } }
+            .map { it.key }
+    }
+
+    override suspend fun deleteQueuedJob(jobId: String): Int = synchronized(lock) {
+        val matching = entries.filter { (key, row) -> key.first == jobId && row.state == BatchProcessWorker.STATE_QUEUED }.keys
+        matching.forEach(entries::remove)
+        matching.size
+    }
+
+    override suspend fun upsert(entries: List<BatchManifestEntity>) {
+        synchronized(lock) {
+            entries.forEach { entry -> this.entries[entry.jobId to entry.sourceIndex] = entry }
+        }
+    }
+
+    override suspend fun update(entry: BatchManifestEntity) {
+        synchronized(lock) {
+            entries[entry.jobId to entry.sourceIndex] = entry
+        }
+    }
+
+    override suspend fun deleteJob(jobId: String) {
+        synchronized(lock) {
+            entries.filterKeys { it.first == jobId }.keys.toList().forEach(entries::remove)
+        }
+    }
+
+    override suspend fun purgeOlderThan(cutoffMillis: Long): Int = synchronized(lock) {
+        val keysToRemove = entries.values.groupBy { it.jobId }
+            .filterValues { rows ->
+                rows.maxOf { it.updatedAt } < cutoffMillis &&
+                    rows.none { it.state == BatchProcessWorker.STATE_PENDING } &&
+                    (rows.none { it.state == BatchProcessWorker.STATE_QUEUED } ||
+                        rows.all { it.state == BatchProcessWorker.STATE_QUEUED })
+            }
+            .keys
+            .flatMap { jobId -> entries.keys.filter { it.first == jobId } }
+        keysToRemove.forEach(entries::remove)
+        keysToRemove.size
+    }
+
+    private fun jobIdsWithState(state: String, descending: Boolean): List<String> = synchronized(lock) {
+        val comparator = compareBy<Map.Entry<String, List<BatchManifestEntity>>> { (_, rows) ->
+            if (descending) -rows.maxOf { it.updatedAt } else rows.minOf { it.updatedAt }
+        }
+        entries.values.filter { it.state == state }.groupBy { it.jobId }.entries
+            .sortedWith(comparator)
+            .map { it.key }
+    }
 }
 
 private class FakePreferencesDataStore(
