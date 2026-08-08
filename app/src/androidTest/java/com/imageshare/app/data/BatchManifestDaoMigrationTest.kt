@@ -56,7 +56,67 @@ class BatchManifestDaoMigrationTest {
         assertFalse(columns.contains("errorMessage"))
     }
 
+    @Test
+    fun migrationFrom2To3AddsNullableSourceMetadata() {
+        helper.createDatabase(TEST_DB_V2, 2).apply {
+            execSQL(
+                """
+                INSERT INTO batch_manifest (
+                    jobId,
+                    sourceIndex,
+                    sourceUriString,
+                    state,
+                    storedFilePath,
+                    outputMimeType,
+                    errorCode,
+                    updatedAt
+                ) VALUES ('job', 0, 'content://images/0', 'Pending', NULL, NULL, NULL, 1000)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(
+            TEST_DB_V2,
+            3,
+            true,
+            ImageShareDatabase.MIGRATION_2_3,
+        )
+        val columns = mutableSetOf<String>()
+        db.query("PRAGMA table_info(`batch_manifest`)").use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) columns += cursor.getString(nameIndex)
+        }
+        db.query(
+            """
+            SELECT
+                `sourceMimeType`,
+                `sourceDisplayName`,
+                `sourceSizeBytes`,
+                `sourceWidth`,
+                `sourceHeight`
+            FROM `batch_manifest`
+            WHERE `jobId` = 'job' AND `sourceIndex` = 0
+            """.trimIndent(),
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertNull(cursor.getString(cursor.getColumnIndexOrThrow("sourceMimeType")))
+            assertNull(cursor.getString(cursor.getColumnIndexOrThrow("sourceDisplayName")))
+            assertTrue(cursor.isNull(cursor.getColumnIndexOrThrow("sourceSizeBytes")))
+            assertTrue(cursor.isNull(cursor.getColumnIndexOrThrow("sourceWidth")))
+            assertTrue(cursor.isNull(cursor.getColumnIndexOrThrow("sourceHeight")))
+        }
+        db.close()
+
+        assertTrue(columns.contains("sourceMimeType"))
+        assertTrue(columns.contains("sourceDisplayName"))
+        assertTrue(columns.contains("sourceSizeBytes"))
+        assertTrue(columns.contains("sourceWidth"))
+        assertTrue(columns.contains("sourceHeight"))
+    }
+
     private companion object {
         const val TEST_DB = "batch-manifest-migration"
+        const val TEST_DB_V2 = "batch-manifest-migration-v2"
     }
 }

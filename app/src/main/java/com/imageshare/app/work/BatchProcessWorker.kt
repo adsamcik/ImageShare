@@ -19,9 +19,9 @@ import com.imageshare.app.AppContainer
 import com.imageshare.app.R
 import com.imageshare.app.data.BatchItemError
 import com.imageshare.app.data.BatchManifestEntity
+import com.imageshare.app.data.toSourceItem
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.processing.PresetPipeline
-import com.imageshare.core.io.sourceItemFromPersistedUriString
 import com.imageshare.feature.preset.Preset
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -71,7 +71,7 @@ class BatchProcessWorker(
         preset: Preset,
         total: Int,
     ) {
-        val sources = remaining.map { sourceItemFromPersistedUriString(it.sourceUriString) }
+        val sources = remaining.map { it.toSourceItem() }
         var latestProgress: BatchOrchestrator.BatchProgress? = null
         var lastAppliedProgress: BatchOrchestrator.BatchProgress? = null
         try {

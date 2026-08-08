@@ -28,6 +28,7 @@ import androidx.work.workDataOf
 import com.imageshare.app.data.BatchItemError
 import com.imageshare.app.data.BatchManifestDao
 import com.imageshare.app.data.BatchManifestEntity
+import com.imageshare.app.data.toSourceItem
 import com.imageshare.app.processing.BatchOrchestrator
 import com.imageshare.app.saving.PersistentSaver
 import com.imageshare.app.sharing.AutoProcessOnShareSettings
@@ -41,7 +42,6 @@ import com.imageshare.core.io.RecentUriEntry
 import com.imageshare.core.io.ShareLauncher
 import com.imageshare.core.io.SharedIntakeStager
 import com.imageshare.core.io.SourceItem
-import com.imageshare.core.io.sourceItemFromPersistedUriString
 import com.imageshare.core.io.toPersistedUriString
 import com.imageshare.core.processing.EncodeError
 import com.imageshare.core.processing.EncodeFormat
@@ -465,6 +465,11 @@ class MainViewModel(
                         ?.toBatchItemError()
                         ?.name,
                     updatedAt = System.currentTimeMillis(),
+                    sourceMimeType = src.mimeType,
+                    sourceDisplayName = src.displayName,
+                    sourceSizeBytes = src.sizeBytes,
+                    sourceWidth = src.width,
+                    sourceHeight = src.height,
                 )
             },
         )
@@ -668,7 +673,7 @@ private fun List<BatchManifestEntity>.toProgress(jobId: String): BatchOrchestrat
         jobId = jobId,
         items = sortedBy { it.sourceIndex }.map { entity ->
             BatchOrchestrator.BatchProgress.Item(
-                source = sourceItemFromPersistedUriString(entity.sourceUriString),
+                source = entity.toSourceItem(),
                 state = entity.toItemState(),
             )
         },
@@ -688,7 +693,7 @@ private fun List<BatchManifestEntity>.toResults(): List<PresetPipeline.Result> =
         .map { it.toResult() }
 
 private fun BatchManifestEntity.toResult(): PresetPipeline.Result {
-    val source = sourceItemFromPersistedUriString(sourceUriString)
+    val source = toSourceItem()
     if (state == BatchProcessWorker.STATE_DONE && storedFilePath != null) {
         val file = File(storedFilePath)
         val mimeType = outputMimeType ?: "image/jpeg"

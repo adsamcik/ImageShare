@@ -1,0 +1,96 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "28501dbefcedbcf8333c70204cd2180a",
+    "entities": [
+      {
+        "tableName": "batch_manifest",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`jobId` TEXT NOT NULL, `sourceIndex` INTEGER NOT NULL, `sourceUriString` TEXT NOT NULL, `state` TEXT NOT NULL, `storedFilePath` TEXT, `outputMimeType` TEXT, `errorCode` TEXT, `updatedAt` INTEGER NOT NULL, `sourceMimeType` TEXT, `sourceDisplayName` TEXT, `sourceSizeBytes` INTEGER, `sourceWidth` INTEGER, `sourceHeight` INTEGER, PRIMARY KEY(`jobId`, `sourceIndex`))",
+        "fields": [
+          {
+            "fieldPath": "jobId",
+            "columnName": "jobId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceIndex",
+            "columnName": "sourceIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceUriString",
+            "columnName": "sourceUriString",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "storedFilePath",
+            "columnName": "storedFilePath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "outputMimeType",
+            "columnName": "outputMimeType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "errorCode",
+            "columnName": "errorCode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceMimeType",
+            "columnName": "sourceMimeType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceDisplayName",
+            "columnName": "sourceDisplayName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceSizeBytes",
+            "columnName": "sourceSizeBytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sourceWidth",
+            "columnName": "sourceWidth",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sourceHeight",
+            "columnName": "sourceHeight",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "jobId",
+            "sourceIndex"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '28501dbefcedbcf8333c70204cd2180a')"
+    ]
+  }
+}

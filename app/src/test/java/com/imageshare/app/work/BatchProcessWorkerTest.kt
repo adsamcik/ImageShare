@@ -2,6 +2,7 @@ package com.imageshare.app.work
 
 import android.content.Context
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import androidx.room.Room
 import androidx.work.Configuration
 import androidx.work.Data
@@ -89,6 +90,28 @@ class BatchProcessWorkerTest {
         val rows = database.batchManifestDao().forJob(JOB_ID)
         assertEquals(3, rows.count { it.state == BatchProcessWorker.STATE_DONE })
         assertTrue(rows.all { it.storedFilePath != null })
+    }
+
+    @Test
+    fun workerRestoresAllSourceMetadataFromManifest() = runTest {
+        seedManifest()
+        val seenSources = mutableListOf<SourceItem>()
+        AppContainer.overrideForTests(
+            batchManifestDao = database.batchManifestDao(),
+            batchOrchestrator = BatchOrchestrator(
+                FakePipeline(context) { source, preset, jobId ->
+                    seenSources += source
+                    success(context, source, preset, jobId)
+                },
+                StandardTestDispatcher(testScheduler),
+            ),
+            presetRepository = WorkerPresetRepository,
+        )
+
+        val result = worker().doWork()
+
+        assertEquals(androidx.work.ListenableWorker.Result.success(), result)
+        assertEquals((0 until 3).map(::sourceFor), seenSources)
     }
 
     @Test
@@ -240,19 +263,34 @@ class BatchProcessWorkerTest {
     private suspend fun seedManifest() {
         database.batchManifestDao().upsert(
             (0 until 3).map { index ->
+                val source = sourceFor(index)
                 BatchManifestEntity(
                     jobId = JOB_ID,
                     sourceIndex = index,
-                    sourceUriString = "content://images/$index",
+                    sourceUriString = source.uri.toString(),
                     state = BatchProcessWorker.STATE_PENDING,
                     storedFilePath = null,
                     outputMimeType = null,
                     errorCode = null,
                     updatedAt = 1_000L,
+                    sourceMimeType = source.mimeType,
+                    sourceDisplayName = source.displayName,
+                    sourceSizeBytes = source.sizeBytes,
+                    sourceWidth = source.width,
+                    sourceHeight = source.height,
                 )
             },
         )
     }
+
+    private fun sourceFor(index: Int): SourceItem = SourceItem(
+        uri = Uri.parse("content://images/$index"),
+        mimeType = "image/png",
+        displayName = "incoming-$index.png",
+        sizeBytes = 10_000L + index,
+        width = 6_000 + index,
+        height = 4_000 + index,
+    )
 
     private fun worker(): BatchProcessWorker = TestListenableWorkerBuilder<BatchProcessWorker>(context)
         .setInputData(

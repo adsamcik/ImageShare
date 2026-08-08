@@ -1,6 +1,7 @@
 package com.imageshare.app.data
 
 import android.content.Context
+import android.net.Uri
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -12,6 +13,7 @@ import androidx.room.RoomDatabase
 import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.imageshare.core.io.SourceItem
 
 @Entity(tableName = "batch_manifest", primaryKeys = ["jobId", "sourceIndex"])
 data class BatchManifestEntity(
@@ -23,6 +25,20 @@ data class BatchManifestEntity(
     val outputMimeType: String?,
     val errorCode: String?,
     val updatedAt: Long,
+    val sourceMimeType: String? = null,
+    val sourceDisplayName: String? = null,
+    val sourceSizeBytes: Long? = null,
+    val sourceWidth: Int? = null,
+    val sourceHeight: Int? = null,
+)
+
+fun BatchManifestEntity.toSourceItem(): SourceItem = SourceItem(
+    uri = Uri.parse(sourceUriString),
+    mimeType = sourceMimeType,
+    displayName = sourceDisplayName,
+    sizeBytes = sourceSizeBytes,
+    width = sourceWidth,
+    height = sourceHeight,
 )
 
 enum class BatchItemError { Decode, Resize, Encode, MetadataApply, Store, Unknown }
@@ -51,7 +67,7 @@ interface BatchManifestDao {
     suspend fun purgeOlderThan(cutoffMillis: Long): Int
 }
 
-@Database(entities = [BatchManifestEntity::class], version = 2, exportSchema = true)
+@Database(entities = [BatchManifestEntity::class], version = 3, exportSchema = true)
 abstract class ImageShareDatabase : RoomDatabase() {
     abstract fun batchManifestDao(): BatchManifestDao
 
@@ -102,10 +118,20 @@ abstract class ImageShareDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `batch_manifest` ADD COLUMN `sourceMimeType` TEXT")
+                db.execSQL("ALTER TABLE `batch_manifest` ADD COLUMN `sourceDisplayName` TEXT")
+                db.execSQL("ALTER TABLE `batch_manifest` ADD COLUMN `sourceSizeBytes` INTEGER")
+                db.execSQL("ALTER TABLE `batch_manifest` ADD COLUMN `sourceWidth` INTEGER")
+                db.execSQL("ALTER TABLE `batch_manifest` ADD COLUMN `sourceHeight` INTEGER")
+            }
+        }
+
         fun create(context: Context): ImageShareDatabase = Room.databaseBuilder(
             context,
             ImageShareDatabase::class.java,
             "imageshare.db",
-        ).addMigrations(MIGRATION_1_2).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }

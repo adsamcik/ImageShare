@@ -419,6 +419,29 @@ class MainViewModelTest {
         eventJob.cancel()
     }
 
+    @Test
+    fun backgroundBatchPersistsAllSourceMetadataInManifest() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val scheduler = FakeBatchWorkScheduler()
+        val manifestDao = batchManifestDao()
+        val viewModel = viewModel(context, scheduler, manifestDao = manifestDao) { before, preset, _ ->
+            success(context, preset, before)
+        }
+        stage(viewModel, source)
+        viewModel.onRunInBackgroundChanged(true)
+        advanceUntilIdle()
+
+        viewModel.onProcessAndShare()
+        assertEnqueuedEventually(scheduler)
+
+        val manifest = manifestDao.forJob(scheduler.enqueued.single()).single()
+        assertEquals(source.mimeType, manifest.sourceMimeType)
+        assertEquals(source.displayName, manifest.sourceDisplayName)
+        assertEquals(source.sizeBytes, manifest.sourceSizeBytes)
+        assertEquals(source.width, manifest.sourceWidth)
+        assertEquals(source.height, manifest.sourceHeight)
+    }
+
     private suspend fun assertEnqueuedEventually(scheduler: FakeBatchWorkScheduler, expectedCount: Int = 1) {
         mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
         if (scheduler.enqueued.size < expectedCount) {
@@ -432,6 +455,7 @@ class MainViewModelTest {
         context: android.content.Context,
         scheduler: BatchWorkScheduler = FakeBatchWorkScheduler(),
         sharingDataStore: DataStore<Preferences> = FakePreferencesDataStore(),
+        manifestDao: BatchManifestDao = batchManifestDao(),
         result: suspend (SourceItem, Preset, String) -> PresetPipeline.Result,
     ): MainViewModel {
         return MainViewModel(
@@ -442,7 +466,7 @@ class MainViewModelTest {
             sharedIntakeRepositoryFactory = { _, _ -> FakeSharedIntakeRepository(listOf(source)) },
             batchOrchestrator = BatchOrchestrator(FakePipelineRunner(result), mainDispatcherRule.dispatcher),
             persistableUriRegistry = persistableUriRegistry(context),
-            batchManifestDao = batchManifestDao(),
+            batchManifestDao = manifestDao,
             batchWorkScheduler = scheduler,
             sharingTargetsRepository = DataStoreSharingTargetsRepository(sharingDataStore),
             autoProcessOnShareSettings = AutoProcessOnShareSettings(sharingDataStore),
