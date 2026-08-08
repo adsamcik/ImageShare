@@ -90,7 +90,7 @@ class RaceConditionInstrumentedTest {
     }
 
     @Test
-    fun concurrentSharedIntentWhileProcessingDoesNotCrashPreviousBatch() = runBlocking {
+    fun concurrentSharedIntentQueuesUntilFirstOutputIsHandedOff() = runBlocking {
         val gate = CompletableDeferred<Unit>()
         val runner = BlockingPipelineRunner(context, gate)
         val viewModel = viewModel(runner)
@@ -100,16 +100,32 @@ class RaceConditionInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.onProcessAndShare() }
         withTimeout(5_000L) { runner.firstStarted.await() }
         viewModel.stageSharedUris("job-2", listOf(replacement.uri), StaticSharedIntakeRepository(listOf(replacement)))
-        waitUntilSources(viewModel, listOf(replacement.uri))
+
+        // An inbound share must not replace inputs or join the currently-running conversion.
+        assertEquals(listOf(source.uri), viewModel.sources.value.map { it.uri })
+        assertTrue(viewModel.processingState.value is ProcessingState.Running)
+        assertEquals(1, runner.calls)
 
         gate.complete(Unit)
         waitUntilDone(viewModel)
+        waitUntilPendingShare(viewModel)
 
         val done = viewModel.processingState.value as ProcessingState.Done
         val successes = done.results.filterIsInstance<PresetPipeline.Result.Success>()
         assertEquals(1, successes.size)
         assertEquals(source.uri, successes.single().before.uri)
+        assertTrue(viewModel.pendingShareIntent.value != null)
+        assertEquals(listOf(source.uri), viewModel.sources.value.map { it.uri })
+        assertEquals(1, runner.calls)
+
+        // Once the first output is handed off, the waiting share becomes the active session.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModel.onShareTargetLaunched() }
+        waitUntilSources(viewModel, listOf(replacement.uri))
+
         assertEquals(listOf(replacement.uri), viewModel.sources.value.map { it.uri })
+        assertTrue(viewModel.processingState.value is ProcessingState.Idle)
+        assertEquals(null, viewModel.pendingShareIntent.value)
+        assertEquals(1, runner.calls)
     }
 
     private suspend fun waitUntilSources(viewModel: MainViewModel, expectedUris: List<Uri>) {
@@ -121,6 +137,12 @@ class RaceConditionInstrumentedTest {
     private suspend fun waitUntilDone(viewModel: MainViewModel) {
         withTimeout(10_000L) {
             while (viewModel.processingState.value !is ProcessingState.Done) delay(10L)
+        }
+    }
+
+    private suspend fun waitUntilPendingShare(viewModel: MainViewModel) {
+        withTimeout(5_000L) {
+            while (viewModel.pendingShareIntent.value == null) delay(10L)
         }
     }
 
@@ -194,7 +216,6 @@ private class RacePresetRepository : PresetRepository {
 
 private class StaticSharedIntakeRepository(private val staged: List<SourceItem>) : SharedIntakeRepository {
     override suspend fun stage(jobId: String, uris: List<Uri>): List<SourceItem> = staged
-    override suspend fun sweep() = Unit
 }
 
 private class RaceBatchWorkScheduler : BatchWorkScheduler {
