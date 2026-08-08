@@ -84,11 +84,18 @@ class MainActivity : ComponentActivity() {
 internal fun Intent?.extractImageShareUris(): List<Uri> {
     if (this == null) return emptyList()
 
-    return when (action) {
+    val streamUris = when (action) {
         Intent.ACTION_SEND -> listOfNotNull(getParcelableExtraCompat(Intent.EXTRA_STREAM))
         Intent.ACTION_SEND_MULTIPLE -> getParcelableArrayListExtraCompat(Intent.EXTRA_STREAM).orEmpty()
         else -> emptyList()
     }
+
+    if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return emptyList()
+
+    // Some senders put the image only in ClipData, while others mirror EXTRA_STREAM there to
+    // carry URI grants. Keep EXTRA_STREAM ordering, include ClipData-only entries, and avoid
+    // processing an image twice when both representations contain the same URI.
+    return (streamUris + getClipDataUris()).distinct()
 }
 
 private fun Intent.getParcelableExtraCompat(name: String): Uri? =
@@ -119,6 +126,20 @@ private fun Intent.getParcelableArrayListExtraCompat(name: String): ArrayList<Ur
         // As above, tolerate malformed or type-confused untrusted extras.
         null
     }
+
+private fun Intent.getClipDataUris(): List<Uri> {
+    return try {
+        val data = clipData ?: return emptyList()
+        buildList {
+            for (index in 0 until data.itemCount) {
+                data.getItemAt(index).uri?.let(::add)
+            }
+        }
+    } catch (_: RuntimeException) {
+        // ClipData is sender-controlled too; a malformed payload must not block valid streams.
+        emptyList()
+    }
+}
 
 private const val SHARE_RANDOM_BOUND = 10_000
 private const val MANIFEST_SWEEP_AGE_MS = 7L * 24L * 60L * 60L * 1_000L

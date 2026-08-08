@@ -1,5 +1,6 @@
 package com.imageshare.app
 
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -36,5 +37,29 @@ class ShareIntentUriExtractionTest {
             .putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(accepted, Bundle()))
 
         assertEquals(listOf(accepted), intent.extractImageShareUris())
+    }
+
+    @Test
+    fun singleShareFallsBackToClipDataWhenExtraStreamIsMissing() {
+        val shared = Uri.parse("content://imageshare.test/clip-only")
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            clipData = ClipData.newRawUri("shared image", shared)
+        }
+
+        assertEquals(listOf(shared), intent.extractImageShareUris())
+    }
+
+    @Test
+    fun multipleShareMergesAndDeduplicatesStreamAndClipDataUris() {
+        val first = Uri.parse("content://imageshare.test/first")
+        val second = Uri.parse("content://imageshare.test/second")
+        val clipData = ClipData.newRawUri("first image", first).apply {
+            addItem(ClipData.Item(second))
+        }
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE)
+            .putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(first, first))
+            .apply { this.clipData = clipData }
+
+        assertEquals(listOf(first, second), intent.extractImageShareUris())
     }
 }
