@@ -31,9 +31,9 @@ class BatchManifestDaoTest {
     }
 
     @Test
-    fun insertUpdateDeleteAndPurge() = runTest {
+    fun purgeKeepsPendingJobsAndMixedAgeTerminalJobsIntact() = runTest {
         val first = entry(0)
-        val second = entry(1)
+        val second = entry(1).copy(updatedAt = 1_000L)
 
         dao.upsert(listOf(first, second))
         assertEquals(listOf(first, second), dao.forJob("job"))
@@ -41,10 +41,20 @@ class BatchManifestDaoTest {
         dao.update(first.copy(state = BatchProcessWorker.STATE_DONE, storedFilePath = "out.jpg"))
         assertEquals(BatchProcessWorker.STATE_DONE, dao.forJob("job").first().state)
 
-        assertEquals(1, dao.purgeOlderThan(1_501L))
-        assertEquals(listOf(1), dao.forJob("job").map { it.sourceIndex })
+        // A pending row keeps the entire job, including older terminal rows, recoverable.
+        assertEquals(0, dao.purgeOlderThan(1_501L))
+        assertEquals(listOf(0, 1), dao.forJob("job").map { it.sourceIndex })
 
-        dao.deleteJob("job")
+        dao.update(
+            second.copy(
+                state = BatchProcessWorker.STATE_DONE,
+                storedFilePath = "out-2.jpg",
+                updatedAt = 3_000L,
+            ),
+        )
+        assertEquals(0, dao.purgeOlderThan(2_501L))
+        assertEquals(listOf(0, 1), dao.forJob("job").map { it.sourceIndex })
+        assertEquals(2, dao.purgeOlderThan(3_501L))
         assertEquals(emptyList<BatchManifestEntity>(), dao.forJob("job"))
     }
 
@@ -62,6 +72,36 @@ class BatchManifestDaoTest {
         )
 
         assertEquals(listOf("newest", "oldest", "middle"), dao.jobIds())
+    }
+    @Test
+    fun staleQueuedOnlyShareExpiresAtTheCutoff() = runTest {
+        val queued = entry(0).copy(
+            jobId = "queued-job",
+            state = "Queued",
+            updatedAt = 1_000L,
+        )
+        dao.upsert(listOf(queued))
+
+        assertEquals(1, dao.purgeOlderThan(2_000L))
+        assertEquals(emptyList<BatchManifestEntity>(), dao.forJob("queued-job"))
+    }
+
+    @Test
+    fun pendingJobIdsAreOrderedByEachJobsLatestPendingUpdate() = runTest {
+        dao.upsert(
+            listOf(
+                entry(0).copy(jobId = "oldest-pending", updatedAt = 100L),
+                entry(1).copy(jobId = "oldest-pending", updatedAt = 1_000L),
+                entry(0).copy(jobId = "middle-pending", updatedAt = 900L),
+                entry(1).copy(jobId = "middle-pending", updatedAt = 200L),
+                entry(0).copy(jobId = "newest-pending", updatedAt = 1_100L),
+            ),
+        )
+
+        assertEquals(
+            listOf("newest-pending", "oldest-pending", "middle-pending"),
+            dao.pendingJobIds(),
+        )
     }
     private fun entry(index: Int) = BatchManifestEntity(
         jobId = "job",

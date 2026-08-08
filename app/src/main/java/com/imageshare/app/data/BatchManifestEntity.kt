@@ -51,7 +51,7 @@ interface BatchManifestDao {
     @Query("SELECT jobId FROM batch_manifest GROUP BY jobId ORDER BY MAX(updatedAt) DESC")
     suspend fun jobIds(): List<String>
 
-    @Query("SELECT DISTINCT jobId FROM batch_manifest WHERE state = 'Pending' ORDER BY updatedAt DESC")
+    @Query("SELECT jobId FROM batch_manifest WHERE state = 'Pending' GROUP BY jobId ORDER BY MAX(updatedAt) DESC")
     suspend fun pendingJobIds(): List<String>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -63,7 +63,15 @@ interface BatchManifestDao {
     @Query("DELETE FROM batch_manifest WHERE jobId = :jobId")
     suspend fun deleteJob(jobId: String)
 
-    @Query("DELETE FROM batch_manifest WHERE updatedAt < :cutoffMillis")
+    @Query(
+        "DELETE FROM batch_manifest WHERE jobId IN (" +
+            "SELECT jobId FROM batch_manifest GROUP BY jobId HAVING " +
+            "MAX(updatedAt) < :cutoffMillis AND " +
+            "SUM(CASE WHEN state = 'Pending' THEN 1 ELSE 0 END) = 0 AND " +
+            "(SUM(CASE WHEN state = 'Queued' THEN 1 ELSE 0 END) = 0 OR " +
+            "SUM(CASE WHEN state = 'Queued' THEN 1 ELSE 0 END) = COUNT(*))" +
+            ")",
+    )
     suspend fun purgeOlderThan(cutoffMillis: Long): Int
 }
 
